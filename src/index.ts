@@ -22,7 +22,7 @@ if (configDirIdx !== -1 && configDirIdx + 1 < process.argv.length) {
 })();
 
 import { Command } from "commander";
-import { invokeTool, listTools, runAdd, runUpdate, runServers, runRemove, getToolSchema, runImport, runSkills, runInspect, runListPrompts, runGetPrompt } from "./cli/commands.js";
+import { invokeTool, listTools, runAdd, runUpdate, runServers, runRemove, getToolSchema, runImport, runSkills, runInspect, runListPrompts, runGetPrompt, runAlias, runAliasExec } from "./cli/commands.js";
 import { parseSlashCommand, parsePShorthand, GLOBAL_VALUE_FLAGS } from "./cli/router.js";
 import { runInteractive } from "./interactive/repl.js";
 import { output, errorEnvelope, successResult, EXIT, type Envelope } from "./output/envelope.js";
@@ -235,6 +235,26 @@ program
     const alias = server.startsWith("/") ? server.slice(1) : server;
     const args = opts.args ? JSON.parse(opts.args) : {};
     const envelope = await runGetPrompt(name, args, { ...getOpts(), serverAlias: alias });
+    emitOutput(envelope);
+  });
+
+program
+  .command("alias <action> [name] [command]")
+  .description("Manage tool aliases (list | set <name> <command> | remove <name>)")
+  .action(async (action: string, name?: string, command?: string) => {
+    const envelope = await runAlias(action, name, command);
+    emitOutput(envelope);
+  });
+
+program
+  .command("run <name>")
+  .description("Execute a saved alias")
+  .allowUnknownOption()
+  .allowExcessArguments()
+  .helpOption(false)
+  .action(async (name: string, _opts: unknown, cmd: Command) => {
+    const extraArgs = cmd.args.filter((a) => a !== name);
+    const envelope = await runAliasExec(name, extraArgs, getOpts());
     emitOutput(envelope);
   });
 

@@ -6,7 +6,7 @@ import type { JsonSchema } from "../utils/schema.js";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { addServer, removeServer, updateServer, getServer, getAllServers, importServers } from "../config/store.js";
+import { addServer, removeServer, updateServer, getServer, getAllServers, importServers, addAlias, removeAlias, getAlias, getAllAliases } from "../config/store.js";
 import { generateSkill } from "../skills/generator.js";
 import { DaemonClient } from "../daemon/client.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
@@ -578,6 +578,42 @@ export async function runInspect(opts: ServerOpts): Promise<Envelope> {
   } finally {
     await client.close();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Aliases
+// ---------------------------------------------------------------------------
+
+export async function runAlias(action: string, name?: string, command?: string): Promise<Envelope> {
+  if (action === "list") {
+    const aliases = getAllAliases();
+    return successResult([{ type: "text", text: JSON.stringify(aliases, null, 2) }]);
+  }
+  if (action === "set" && name && command) {
+    addAlias(name, command);
+    return successEmpty();
+  }
+  if (action === "remove" && name) {
+    if (!removeAlias(name)) {
+      return errorEnvelope(EXIT.CONFIG_ERROR, `Alias "${name}" not found.`);
+    }
+    return successEmpty();
+  }
+  return errorEnvelope(EXIT.VALIDATION_ERROR, "Usage: mcpx alias list | mcpx alias set <name> <command> | mcpx alias remove <name>");
+}
+
+export async function runAliasExec(name: string, extraArgs: string[], opts: ServerOpts): Promise<Envelope> {
+  const command = getAlias(name);
+  if (!command) {
+    return errorEnvelope(EXIT.CONFIG_ERROR, `Alias "${name}" not found.`);
+  }
+  const { parsePShorthand } = await import("./router.js");
+  const parsed = parsePShorthand(command);
+  if (!parsed) {
+    return errorEnvelope(EXIT.VALIDATION_ERROR, `Invalid alias format: ${command}`);
+  }
+  const mergedArgs = [...parsed.toolArgs, ...extraArgs];
+  return invokeTool(parsed.toolName, mergedArgs, { ...opts, serverAlias: parsed.serverAlias });
 }
 
 function findClaudeConfig(): string | null {

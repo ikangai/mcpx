@@ -13,6 +13,7 @@ function getServersPath(): string {
 
 export interface ServersFile {
   mcpServers: Record<string, ServerConfig>;
+  aliases?: Record<string, string>;
 }
 
 // In-process cache to avoid repeated disk reads within a single CLI invocation
@@ -102,4 +103,32 @@ export function removeServer(alias: string): boolean {
   delete config.mcpServers[alias];
   saveServers(config);
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Aliases
+// ---------------------------------------------------------------------------
+
+export function addAlias(name: string, command: string): void {
+  const config = loadServers();
+  if (!config.aliases) config.aliases = {};
+  config.aliases[name] = command;
+  saveServers(config);
+}
+
+export function removeAlias(name: string): boolean {
+  const config = loadServers();
+  if (!config.aliases || !(name in config.aliases)) return false;
+  delete config.aliases[name];
+  saveServers(config);
+  return true;
+}
+
+export function getAlias(name: string): string | undefined {
+  const config = loadServers();
+  return config.aliases?.[name];
+}
+
+export function getAllAliases(): Record<string, string> {
+  return loadServers().aliases ?? {};
 }
