@@ -22,7 +22,7 @@ if (configDirIdx !== -1 && configDirIdx + 1 < process.argv.length) {
 })();
 
 import { Command } from "commander";
-import { invokeTool, listTools, runAdd, runUpdate, runServers, runRemove, getToolSchema, runImport, runSkills, runInspect, runListPrompts, runGetPrompt, runAlias, runAliasExec, runListResources, runReadResource, runDiff } from "./cli/commands.js";
+import { invokeTool, listTools, runAdd, runUpdate, runServers, runRemove, getToolSchema, runImport, runSkills, runInspect, runListPrompts, runGetPrompt, runAlias, runAliasExec, runListResources, runReadResource, runDiff, runTest } from "./cli/commands.js";
 import { parseSlashCommand, parsePShorthand, GLOBAL_VALUE_FLAGS } from "./cli/router.js";
 import { runInteractive } from "./interactive/repl.js";
 import { output, errorEnvelope, successResult, EXIT, type Envelope } from "./output/envelope.js";
@@ -282,6 +282,23 @@ program
   .action(async (server: string) => {
     const alias = server.startsWith("/") ? server.slice(1) : server;
     const envelope = await runDiff(alias, getOpts());
+    emitOutput(envelope);
+  });
+
+program
+  .command("serve")
+  .description("Run mcpx as an MCP server (gateway for all registered servers)")
+  .action(async () => {
+    const { startGateway } = await import("./serve/gateway.js");
+    await startGateway({ verbose: program.opts().verbose });
+  });
+
+program
+  .command("test <server>")
+  .description("Verify a server is reachable and responding")
+  .action(async (server: string) => {
+    const alias = server.startsWith("/") ? server.slice(1) : server;
+    const envelope = await runTest({ ...getOpts(), serverAlias: alias });
     emitOutput(envelope);
   });
 

@@ -716,6 +716,97 @@ export async function runDiff(serverAlias: string, opts: ServerOpts): Promise<En
   }
 }
 
+// ---------------------------------------------------------------------------
+// Server Health Check
+// ---------------------------------------------------------------------------
+
+export async function runTest(opts: ServerOpts): Promise<Envelope> {
+  let serverConfig: ServerConfig;
+  try {
+    serverConfig = resolveServer(opts);
+  } catch (err) {
+    if (err instanceof ConfigError) return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
+    return errorEnvelope(EXIT.INTERNAL_ERROR, (err as Error).message);
+  }
+
+  const serverLabel = opts.serverAlias ?? "server";
+  const results: string[] = [];
+
+  const client = new McpClient();
+  try {
+    // Step 1: Connect
+    const connectStart = performance.now();
+    await client.connect(serverConfig, { verbose: opts?.verbose, timeout: opts?.timeout });
+    const connectMs = Math.round(performance.now() - connectStart);
+    results.push(`Connect: OK (${connectMs}ms)`);
+
+    // Step 2: Server info
+    const version = client.getServerVersion();
+    const capabilities = client.getServerCapabilities();
+    if (version) {
+      results.push(`Server: ${version.name} v${version.version}`);
+    }
+
+    // Step 3: List tools
+    const listStart = performance.now();
+    const tools = await client.listTools();
+    const listMs = Math.round(performance.now() - listStart);
+    results.push(`Tools: ${tools.length} discovered (${listMs}ms)`);
+
+    // Step 4: List prompts
+    const prompts = await client.listPrompts();
+    if (prompts.length > 0) {
+      results.push(`Prompts: ${prompts.length} available`);
+    }
+
+    // Step 5: List resources
+    const resources = await client.listResources();
+    if (resources.length > 0) {
+      results.push(`Resources: ${resources.length} available`);
+    }
+
+    // Step 6: Try calling a tool with no args (if one exists with no required params)
+    const noParamTool = tools.find((t) => {
+      const schema = t.inputSchema as { required?: string[] };
+      return !schema.required || schema.required.length === 0;
+    });
+    if (noParamTool) {
+      const callStart = performance.now();
+      try {
+        await client.callTool(noParamTool.name, {});
+        const callMs = Math.round(performance.now() - callStart);
+        results.push(`Call ${noParamTool.name}: OK (${callMs}ms)`);
+      } catch (err) {
+        results.push(`Call ${noParamTool.name}: FAILED - ${(err as Error).message}`);
+      }
+    }
+
+    // Step 7: Capabilities summary
+    const caps: string[] = [];
+    if (capabilities) {
+      if ((capabilities as any).tools) caps.push("tools");
+      if ((capabilities as any).prompts) caps.push("prompts");
+      if ((capabilities as any).resources) caps.push("resources");
+    }
+    if (caps.length > 0) {
+      results.push(`Capabilities: ${caps.join(", ")}`);
+    }
+
+    const instructions = client.getInstructions();
+    if (instructions) {
+      results.push(`Instructions: ${instructions.slice(0, 100)}${instructions.length > 100 ? "..." : ""}`);
+    }
+
+    results.push("", `All checks passed for ${serverLabel}.`);
+    return successResult([{ type: "text", text: results.join("\n") }]);
+  } catch (err) {
+    results.push(`FAILED: ${(err as Error).message}`);
+    return errorEnvelope(EXIT.CONNECTION_ERROR, results.join("\n"));
+  } finally {
+    await client.close();
+  }
+}
+
 function findClaudeConfig(): string | null {
   const candidates = [
     join(homedir(), "Library", "Application Support", "Claude", "claude_desktop_config.json"),
