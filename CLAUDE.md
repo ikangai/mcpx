@@ -52,12 +52,18 @@ Key flow for slash commands: `mcpx /server tool --flag value` -> router extracts
 - `src/interactive/repl.ts` — REPL mode with inquirer search prompt, per-field input prompts, and command-line echo of equivalent `mcpx exec` command
 - `src/skills/generator.ts` — `generateSkill` produces markdown documentation for a server's tools with usage examples and parameter tables
 - `src/utils/schema.ts` — `JsonSchema`/`PropertySchema` types, `isSimpleType`, `isArrayOfPrimitives` type guards
+- `src/serve/gateway.ts` — MCP gateway server; connects to all registered servers and re-exposes their tools with namespaced names (`alias.toolName`) via stdio or HTTP transport
+- `src/workflows/runner.ts` — YAML workflow runner; sequential multi-server tool chains with variable interpolation
+- `src/hooks/runner.ts` — middleware hooks; runs shell commands before/after tool calls with pattern matching
+- `src/audit/logger.ts` — NDJSON audit logger; appends tool invocations with timing to a log file
+- `src/cli/diff.ts` — schema diff; compares current tool schemas against saved snapshots
 
 ### Test structure
 
 - `src/**/__tests__/*.test.ts` — unit tests (config parser, flags generator, formatter, envelope, router, store)
 - `test/integration/` — end-to-end tests using a real MCP server (`test-server.ts` with 3 tools: greet, add, fail)
 - `test/evals/` — LLM-eval-style tests covering discovery, schema, invocation, output formatting, and end-to-end flows (use `helpers.ts` for common setup)
+- `test/evals/advanced.test.ts` — tests for inspect, test, params-stdin, field, csv, markdown, alias, hook, log, diff, workflow, prompts, resources
 
 ## Key design decisions
 
@@ -68,3 +74,9 @@ Key flow for slash commands: `mcpx /server tool --flag value` -> router extracts
 - **Dynamic flags**: generated at runtime from MCP tool schemas; `object`-typed properties are skipped (users must use `--json`/`--params` for nested inputs)
 - **`makeOptionMandatory()` not used**: intentionally omitted because it conflicts with the `--json`/`--params` escape hatch
 - **Windows compatibility**: daemon uses named pipes on Windows (`\\.\pipe\mcpx-...`) instead of Unix sockets
+- **Audit logging**: `--log` appends NDJSON records (server, tool, params, exitCode, durationMs) for production observability
+- **Hooks**: before/after patterns (`before:server.*`, `after:server.tool`) with 5s timeout, silent failures — hooks never block tool execution
+- **Workflows**: YAML-based sequential steps with `{{variable}}` interpolation between steps — fails fast on first error
+- **HTTP gateway**: `mcpx serve --port N` exposes JSON-RPC endpoint at `/mcp` and health check at `/health` — no authentication by default (bind to localhost for security)
+- **Result caching**: daemon caches results for tools with `readOnlyHint` or `idempotentHint` annotations (30s TTL)
+- **Output formats**: `--format csv|markdown` in addition to json/table/yaml — CSV escapes fields with commas/quotes, markdown produces GFM tables
