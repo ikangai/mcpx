@@ -43,8 +43,11 @@ export class McpClient {
     return tools;
   }
 
-  async callTool(name: string, args: Record<string, unknown>) {
-    return await this.client.callTool({ name, arguments: args });
+  async callTool(name: string, args: Record<string, unknown>, options?: { onProgress?: (progress: { progress: number; total?: number; message?: string }) => void }) {
+    return await this.client.callTool({ name, arguments: args }, undefined, options?.onProgress ? {
+      onprogress: (progress) => options.onProgress!(progress as { progress: number; total?: number; message?: string }),
+      resetTimeoutOnProgress: true,
+    } : undefined);
   }
 
   getServerCapabilities(): Record<string, unknown> | undefined {

@@ -272,10 +272,21 @@ export async function invokeTool(
         ]);
       }
 
-      const result = (await client.callTool(toolName, args)) as {
+      // Set up progress reporting on TTY
+      const showProgress = process.stderr.isTTY;
+      const onProgress = showProgress ? (p: { progress: number; total?: number; message?: string }) => {
+        const pct = p.total ? Math.round((p.progress / p.total) * 100) : null;
+        const bar = pct !== null ? `[${pct}%] ` : "";
+        process.stderr.write(`\r${bar}${p.message ?? ""}`.padEnd(60));
+      } : undefined;
+
+      const result = (await client.callTool(toolName, args, onProgress ? { onProgress } : undefined)) as {
         content: Array<ContentItem>;
         isError?: boolean;
       };
+
+      // Clear progress line
+      if (showProgress) process.stderr.write("\r" + " ".repeat(60) + "\r");
 
       if (result.isError) {
         const msg = result.content
