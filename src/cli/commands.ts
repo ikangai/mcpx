@@ -581,6 +581,50 @@ export async function runInspect(opts: ServerOpts): Promise<Envelope> {
 }
 
 // ---------------------------------------------------------------------------
+// Resources
+// ---------------------------------------------------------------------------
+
+export async function runListResources(opts: ServerOpts): Promise<Envelope> {
+  let serverConfig: ServerConfig;
+  try { serverConfig = resolveServer(opts); }
+  catch (err) {
+    if (err instanceof ConfigError) return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
+    return errorEnvelope(EXIT.INTERNAL_ERROR, (err as Error).message);
+  }
+
+  const client = new McpClient();
+  try {
+    await client.connect(serverConfig, { verbose: opts?.verbose, timeout: opts?.timeout });
+    const resources = await client.listResources();
+    return successResult([{ type: "text", text: JSON.stringify(resources, null, 2) }]);
+  } catch (err) {
+    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+  } finally {
+    await client.close();
+  }
+}
+
+export async function runReadResource(uri: string, opts: ServerOpts): Promise<Envelope> {
+  let serverConfig: ServerConfig;
+  try { serverConfig = resolveServer(opts); }
+  catch (err) {
+    if (err instanceof ConfigError) return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
+    return errorEnvelope(EXIT.INTERNAL_ERROR, (err as Error).message);
+  }
+
+  const client = new McpClient();
+  try {
+    await client.connect(serverConfig, { verbose: opts?.verbose, timeout: opts?.timeout });
+    const resource = await client.readResource(uri);
+    return successResult([{ type: "text", text: JSON.stringify(resource, null, 2) }]);
+  } catch (err) {
+    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+  } finally {
+    await client.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Aliases
 // ---------------------------------------------------------------------------
 

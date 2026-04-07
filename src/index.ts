@@ -22,7 +22,7 @@ if (configDirIdx !== -1 && configDirIdx + 1 < process.argv.length) {
 })();
 
 import { Command } from "commander";
-import { invokeTool, listTools, runAdd, runUpdate, runServers, runRemove, getToolSchema, runImport, runSkills, runInspect, runListPrompts, runGetPrompt, runAlias, runAliasExec } from "./cli/commands.js";
+import { invokeTool, listTools, runAdd, runUpdate, runServers, runRemove, getToolSchema, runImport, runSkills, runInspect, runListPrompts, runGetPrompt, runAlias, runAliasExec, runListResources, runReadResource } from "./cli/commands.js";
 import { parseSlashCommand, parsePShorthand, GLOBAL_VALUE_FLAGS } from "./cli/router.js";
 import { runInteractive } from "./interactive/repl.js";
 import { output, errorEnvelope, successResult, EXIT, type Envelope } from "./output/envelope.js";
@@ -235,6 +235,24 @@ program
     const alias = server.startsWith("/") ? server.slice(1) : server;
     const args = opts.args ? JSON.parse(opts.args) : {};
     const envelope = await runGetPrompt(name, args, { ...getOpts(), serverAlias: alias });
+    emitOutput(envelope);
+  });
+
+program
+  .command("resources <server>")
+  .description("List available resources from a server")
+  .action(async (server: string) => {
+    const alias = server.startsWith("/") ? server.slice(1) : server;
+    const envelope = await runListResources({ ...getOpts(), serverAlias: alias });
+    emitOutput(envelope);
+  });
+
+program
+  .command("resource <server> <uri>")
+  .description("Read a resource by URI from a server")
+  .action(async (server: string, uri: string) => {
+    const alias = server.startsWith("/") ? server.slice(1) : server;
+    const envelope = await runReadResource(uri, { ...getOpts(), serverAlias: alias });
     emitOutput(envelope);
   });
 
