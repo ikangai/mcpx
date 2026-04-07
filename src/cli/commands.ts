@@ -4,13 +4,14 @@ import { parseServerSpec, parseConfigFile, type ServerConfig } from "../mcp/conf
 import { addToolFlags, parseToolArgs } from "./flags.js";
 import type { JsonSchema } from "../utils/schema.js";
 import { readFileSync } from "node:fs";
-import { addServer, getServer, getAllServers } from "../config/store.js";
+import { addServer, removeServer, getServer, getAllServers } from "../config/store.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import {
   type Envelope,
   successTools,
   successResult,
   successSchema,
+  successServers,
   errorEnvelope,
   EXIT,
   type ContentItem,
@@ -288,4 +289,22 @@ export async function runAdd(alias: string, command: string, env?: Record<string
   } catch (err) {
     return errorEnvelope(EXIT.CONFIG_ERROR, (err as Error).message);
   }
+}
+
+export async function runServers(): Promise<Envelope> {
+  const servers = getAllServers();
+  const list = Object.entries(servers).map(([alias, config]) => ({
+    alias,
+    command: config.command,
+    args: config.args,
+    env: config.env,
+  }));
+  return successServers(list);
+}
+
+export async function runRemove(alias: string): Promise<Envelope> {
+  if (!removeServer(alias)) {
+    return errorEnvelope(EXIT.CONFIG_ERROR, `Server "${alias}" not found.`);
+  }
+  return { ok: true } as Envelope;
 }

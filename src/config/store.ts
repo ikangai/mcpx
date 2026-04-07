@@ -47,3 +47,11 @@ export function getServer(alias: string): ServerConfig | undefined {
 export function getAllServers(): Record<string, ServerConfig> {
   return loadServers().mcpServers;
 }
+
+export function removeServer(alias: string): boolean {
+  const config = loadServers();
+  if (!(alias in config.mcpServers)) return false;
+  delete config.mcpServers[alias];
+  saveServers(config);
+  return true;
+}

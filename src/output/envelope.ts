@@ -1,8 +1,16 @@
+export interface ServerInfo {
+  alias: string;
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+}
+
 export interface SuccessEnvelope {
   ok: true;
   result?: ContentItem[];
   tools?: ToolInfo[];
   schema?: Record<string, unknown>;
+  servers?: ServerInfo[];
 }
 
 export interface ErrorEnvelope {
@@ -46,6 +54,10 @@ export function successTools(tools: ToolInfo[]): SuccessEnvelope {
 
 export function successSchema(schema: Record<string, unknown>): SuccessEnvelope {
   return { ok: true, schema };
+}
+
+export function successServers(servers: ServerInfo[]): SuccessEnvelope {
+  return { ok: true, servers };
 }
 
 export function errorEnvelope(code: number, message: string): ErrorEnvelope {

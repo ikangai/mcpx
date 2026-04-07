@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { invokeTool, listTools, runAdd, getToolSchema } from "./cli/commands.js";
+import { invokeTool, listTools, runAdd, runServers, runRemove, getToolSchema } from "./cli/commands.js";
 import { parseSlashCommand, parsePShorthand } from "./cli/router.js";
 import { runInteractive } from "./interactive/repl.js";
 import { output, errorEnvelope, EXIT, type Envelope } from "./output/envelope.js";
@@ -62,6 +62,22 @@ program
   .action(async (server: string, tool: string) => {
     const alias = server.startsWith("/") ? server.slice(1) : server;
     const envelope = await getToolSchema(tool, { serverAlias: alias });
+    output(envelope);
+  });
+
+program
+  .command("servers")
+  .description("List registered servers")
+  .action(async () => {
+    const envelope = await runServers();
+    output(envelope);
+  });
+
+program
+  .command("remove <alias>")
+  .description("Remove a registered server")
+  .action(async (alias: string) => {
+    const envelope = await runRemove(alias);
     output(envelope);
   });
 
