@@ -72,7 +72,28 @@ export async function startGateway(opts?: { verbose?: boolean; port?: number; to
                 isError: result.isError,
               };
             } catch (err) {
-              return { content: [{ type: "text" as const, text: (err as Error).message }], isError: true };
+              // Backend may have crashed — remove from pool so next request reconnects
+              pool.delete(alias);
+              try { await entry.client.close(); } catch { /* ignore */ }
+
+              // Try to reconnect once
+              try {
+                const newClient = new McpClient();
+                await newClient.connect(config, { verbose: opts?.verbose ?? false });
+                const newTools = await newClient.listTools();
+                pool.set(alias, { client: newClient, tools: newTools });
+                // Retry the call
+                const result = await newClient.callTool(tool.name, args) as {
+                  content: Array<{ type: "text"; text: string }>;
+                  isError?: boolean;
+                };
+                return {
+                  content: result.content.map((c) => ({ type: "text" as const, text: c.text ?? "" })),
+                  isError: result.isError,
+                };
+              } catch (retryErr) {
+                return { content: [{ type: "text" as const, text: `Server "${alias}" disconnected: ${(retryErr as Error).message}` }], isError: true };
+              }
             }
           }
         );

@@ -12,7 +12,7 @@ export interface SlashCommand {
 }
 
 /** Global flags that consume a following value */
-const GLOBAL_VALUE_FLAGS = new Set(["--server", "-s", "--config", "-c", "--server-name", "-n", "--timeout", "-t", "--format", "-f", "--config-dir"]);
+const GLOBAL_VALUE_FLAGS = new Set(["--server", "-s", "--config", "-c", "--server-name", "-n", "--timeout", "-t", "--format", "-f", "--config-dir", "--log"]);
 
 export { GLOBAL_VALUE_FLAGS };
 

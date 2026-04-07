@@ -54,6 +54,17 @@ export async function runWorkflow(
     return errorEnvelope(EXIT.VALIDATION_ERROR, "Workflow must have a 'steps' array");
   }
 
+  // Validate required fields in each step
+  for (let i = 0; i < workflow.steps.length; i++) {
+    const step = workflow.steps[i];
+    if (!step.server) {
+      return errorEnvelope(EXIT.VALIDATION_ERROR, `Workflow step ${i + 1}: missing "server" field`);
+    }
+    if (!step.tool) {
+      return errorEnvelope(EXIT.VALIDATION_ERROR, `Workflow step ${i + 1}: missing "tool" field`);
+    }
+  }
+
   const vars: Record<string, unknown> = {};
   const stepResults: Array<{ step: number; server: string; tool: string; ok: boolean; output?: string }> = [];
 

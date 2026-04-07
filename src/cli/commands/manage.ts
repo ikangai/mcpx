@@ -13,6 +13,14 @@ export function registerManageCommands(
   getOpts: () => ServerOpts,
 ): void {
   program
+    .command("init")
+    .description("Interactive setup wizard")
+    .action(async () => {
+      const { runInit } = await import("../init.js");
+      await runInit();
+    });
+
+  program
     .command("daemon <action>")
     .description("Manage the connection daemon (start|stop|status|flush)")
     .action(async (action: string) => {

@@ -75,7 +75,7 @@ export function formatResult(
               // Single object as single-row CSV
               const keys = Object.keys(parsed);
               lines.push(keys.join(","));
-              lines.push(keys.map((k) => escapeCsvField(String((parsed as Record<string, unknown>)[k] ?? ""))).join(","));
+              lines.push(keys.map((k) => escapeCsvField(displayValue((parsed as Record<string, unknown>)[k]))).join(","));
             } else {
               lines.push(String(parsed));
             }
@@ -119,6 +119,13 @@ function escapeCsvField(val: string): string {
     : val;
 }
 
+/** Stringify a value for display — JSON.stringify objects instead of [object Object] */
+function displayValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
 function formatArrayAsCsv(arr: unknown[]): string {
   if (arr.length === 0) return "";
   if (typeof arr[0] !== "object" || arr[0] === null) {
@@ -127,7 +134,7 @@ function formatArrayAsCsv(arr: unknown[]): string {
   const keys = Object.keys(arr[0] as Record<string, unknown>);
   const header = keys.join(",");
   const rows = arr.map((item) =>
-    keys.map((k) => escapeCsvField(String((item as Record<string, unknown>)[k] ?? ""))).join(",")
+    keys.map((k) => escapeCsvField(displayValue((item as Record<string, unknown>)[k]))).join(",")
   );
   return [header, ...rows].join("\n");
 }
@@ -135,20 +142,20 @@ function formatArrayAsCsv(arr: unknown[]): string {
 function formatArrayAsMarkdown(arr: unknown[]): string {
   if (arr.length === 0) return "(empty)";
   if (typeof arr[0] !== "object" || arr[0] === null) {
-    return arr.map((v) => `- ${String(v)}`).join("\n");
+    return arr.map((v) => `- ${displayValue(v)}`).join("\n");
   }
   const keys = Object.keys(arr[0] as Record<string, unknown>);
   const header = `| ${keys.join(" | ")} |`;
   const separator = `| ${keys.map(() => "---").join(" | ")} |`;
   const rows = arr.map((item) =>
-    `| ${keys.map((k) => String((item as Record<string, unknown>)[k] ?? "")).join(" | ")} |`
+    `| ${keys.map((k) => displayValue((item as Record<string, unknown>)[k])).join(" | ")} |`
   );
   return [header, separator, ...rows].join("\n");
 }
 
 function formatObjectAsMarkdown(obj: Record<string, unknown>): string {
   return Object.entries(obj)
-    .map(([key, value]) => `**${key}:** ${String(value)}`)
+    .map(([key, value]) => `**${key}:** ${displayValue(value)}`)
     .join("\n");
 }
 
@@ -164,7 +171,7 @@ function formatArrayAsTable(arr: unknown[]): string {
   });
   for (const item of arr) {
     const row = keys.map((k) =>
-      String((item as Record<string, unknown>)[k] ?? "")
+      displayValue((item as Record<string, unknown>)[k])
     );
     table.push(row);
   }
@@ -176,7 +183,7 @@ function formatObjectAsTable(obj: Record<string, unknown>): string {
     style: { head: [], border: [] },
   });
   for (const [key, value] of Object.entries(obj)) {
-    table.push({ [chalk.bold(key)]: String(value) });
+    table.push({ [chalk.bold(key)]: displayValue(value) });
   }
   return table.toString();
 }

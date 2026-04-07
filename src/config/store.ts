@@ -13,6 +13,7 @@ function getServersPath(): string {
 }
 
 export interface ServersFile {
+  version?: number; // config format version
   mcpServers: Record<string, ServerConfig>;
   aliases?: Record<string, string>;
   hooks?: Record<string, string>; // pattern -> shell command
@@ -39,6 +40,7 @@ export function loadServers(): ServersFile {
 }
 
 export function saveServers(config: ServersFile): void {
+  config.version = 1; // always write latest version
   const dir = getConfigDir();
   mkdirSync(dir, { recursive: true });
   writeFileSync(getServersPath(), JSON.stringify(config, null, 2) + "\n");
@@ -46,8 +48,10 @@ export function saveServers(config: ServersFile): void {
 }
 
 export function addServer(alias: string, command: string, env?: Record<string, string>): void {
+  if (!alias.trim()) throw new Error("Server alias cannot be empty");
+  if (!command.trim()) throw new Error("Server command cannot be empty");
   const config = loadServers();
-  const parts = command.split(/\s+/);
+  const parts = command.split(/\s+/).filter(Boolean);
   const server: ServerConfig = { command: parts[0], args: parts.slice(1) };
   if (env && Object.keys(env).length > 0) server.env = env;
   config.mcpServers[alias] = server;

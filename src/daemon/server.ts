@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { unlinkSync, existsSync, mkdirSync, chmodSync } from "node:fs";
 import { McpClient } from "../mcp/client.js";
 import type { ServerConfig } from "../mcp/config.js";
-import type { DaemonRequest, DaemonResponse } from "./protocol.js";
+import { DAEMON_PROTOCOL_VERSION, type DaemonRequest, type DaemonResponse } from "./protocol.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
@@ -55,7 +55,30 @@ class ConnectionPool {
   }
 }
 
+class ResultCache {
+  private cache = new Map<string, { result: unknown; expiry: number }>();
+
+  get(key: string): unknown | undefined {
+    const entry = this.cache.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expiry) {
+      this.cache.delete(key);
+      return undefined;
+    }
+    return entry.result;
+  }
+
+  set(key: string, result: unknown, ttlMs: number): void {
+    this.cache.set(key, { result, expiry: Date.now() + ttlMs });
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+}
+
 const pool = new ConnectionPool();
+const resultCache = new ResultCache();
 let idleTimer: ReturnType<typeof setTimeout>;
 let server: Server;
 
@@ -104,7 +127,7 @@ async function handleMessage(socket: Socket, rawMessage: string) {
 
   try {
     if (req.method === "ping") {
-      respond({ id: req.id, result: "pong" });
+      respond({ id: req.id, result: "pong", protocolVersion: DAEMON_PROTOCOL_VERSION });
       return;
     }
 
@@ -118,6 +141,7 @@ async function handleMessage(socket: Socket, rawMessage: string) {
     }
 
     if (req.method === "flush") {
+      resultCache.clear();
       if (req.serverAlias) {
         await pool.remove(req.serverAlias);
         respond({ id: req.id, result: `Flushed connection for ${req.serverAlias}` });
@@ -147,8 +171,29 @@ async function handleMessage(socket: Socket, rawMessage: string) {
     }
 
     if (req.method === "callTool") {
+      // Check cache for idempotent/read-only tools
+      const tool = tools.find((t: any) => t.name === req.toolName);
+      const annotations = (tool as any)?.annotations;
+      const cacheable = annotations?.readOnlyHint || annotations?.idempotentHint;
+
+      if (cacheable) {
+        const cacheKey = `${req.serverAlias}:${req.toolName}:${JSON.stringify(req.toolArgs ?? {})}`;
+        const cached = resultCache.get(cacheKey);
+        if (cached) {
+          respond({ id: req.id, result: cached });
+          return;
+        }
+      }
+
       try {
         const result = await client.callTool(req.toolName!, req.toolArgs ?? {});
+
+        // Cache if cacheable (30 second TTL)
+        if (cacheable) {
+          const cacheKey = `${req.serverAlias}:${req.toolName}:${JSON.stringify(req.toolArgs ?? {})}`;
+          resultCache.set(cacheKey, result, 30_000);
+        }
+
         respond({ id: req.id, result });
       } catch (err) {
         // Connection may be stale — remove from pool so next request reconnects

@@ -1,4 +1,15 @@
 #!/usr/bin/env node
+
+// Global error handlers — prevent silent crashes
+process.on("unhandledRejection", (err) => {
+  console.error(JSON.stringify({ ok: false, error: { code: 5, message: `Unhandled: ${err instanceof Error ? err.message : String(err)}` } }));
+  process.exit(5);
+});
+process.on("uncaughtException", (err) => {
+  console.error(JSON.stringify({ ok: false, error: { code: 5, message: `Internal: ${err.message}` } }));
+  process.exit(5);
+});
+
 import { readFileSync, existsSync } from "node:fs";
 
 // Early arg scanning for --config-dir (must be set before any imports read it)

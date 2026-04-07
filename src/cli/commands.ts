@@ -103,6 +103,18 @@ function extractParams(args: string[]): string | null {
   return null;
 }
 
+export function friendlyError(err: Error, serverConfig?: ServerConfig): string {
+  const msg = err.message;
+  if (msg.includes("ENOENT") || msg.includes("spawn")) {
+    const cmd = serverConfig?.command ?? "the command";
+    return `Command "${cmd}" not found. Is it installed and in your PATH?`;
+  }
+  if (msg.includes("ECONNREFUSED")) return "Connection refused. Is the server running?";
+  if (msg.includes("timed out")) return "Connection timed out. Try increasing --timeout.";
+  if (msg.includes("EACCES")) return "Permission denied. Check file permissions.";
+  return msg;
+}
+
 export type ServerOpts = {
   server?: string;
   config?: string;
@@ -338,7 +350,7 @@ export async function invokeTool(
       return successResult(result.content);
     }, { verbose: opts?.verbose, timeout: opts?.timeout, serverAlias: opts?.serverAlias });
   } catch (err) {
-    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+    return errorEnvelope(EXIT.CONNECTION_ERROR, friendlyError(err as Error, serverConfig));
   }
 }
 
@@ -371,7 +383,7 @@ export async function listTools(opts: ServerOpts): Promise<Envelope> {
       );
     }, { verbose: opts?.verbose, timeout: opts?.timeout, serverAlias: opts?.serverAlias });
   } catch (err) {
-    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+    return errorEnvelope(EXIT.CONNECTION_ERROR, friendlyError(err as Error, serverConfig));
   }
 }
 
@@ -433,6 +445,6 @@ export async function getToolSchema(
       } as Record<string, unknown>);
     }, { verbose: opts?.verbose, timeout: opts?.timeout, serverAlias: opts?.serverAlias });
   } catch (err) {
-    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+    return errorEnvelope(EXIT.CONNECTION_ERROR, friendlyError(err as Error, serverConfig));
   }
 }

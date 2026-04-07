@@ -16,4 +16,14 @@ export function registerCommands(
   registerServerCommands(program, emitOutput, getOpts);
   registerObserveCommands(program, emitOutput, getOpts);
   registerManageCommands(program, emitOutput, getOpts);
+
+  // Group commands in help output
+  program.addHelpText("after", `
+Command Groups:
+  Core:          list, exec, schema, interactive
+  Management:    add, remove, update, servers, import
+  MCP Protocol:  inspect, prompts, prompt, resources, resource, test
+  Orchestration: serve, watch, workflow, alias, run
+  Operations:    daemon, hook, diff, skills, completion
+`);
 }

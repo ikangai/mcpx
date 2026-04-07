@@ -15,7 +15,7 @@ import {
   errorEnvelope,
   EXIT,
 } from "../output/envelope.js";
-import { resolveServer, ConfigError, invokeTool, type ServerOpts } from "./commands.js";
+import { resolveServer, ConfigError, friendlyError, invokeTool, type ServerOpts } from "./commands.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -123,7 +123,7 @@ export async function runSkills(serverAlias: string, opts?: ServerOpts): Promise
     });
   } catch (err) {
     if (err instanceof ConfigError) return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
-    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+    return errorEnvelope(EXIT.CONNECTION_ERROR, friendlyError(err as Error));
   }
 }
 
@@ -139,7 +139,7 @@ export async function runListPrompts(opts: ServerOpts): Promise<Envelope> {
     });
   } catch (err) {
     if (err instanceof ConfigError) return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
-    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+    return errorEnvelope(EXIT.CONNECTION_ERROR, friendlyError(err as Error));
   }
 }
 
@@ -155,7 +155,7 @@ export async function runGetPrompt(
     });
   } catch (err) {
     if (err instanceof ConfigError) return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
-    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+    return errorEnvelope(EXIT.CONNECTION_ERROR, friendlyError(err as Error));
   }
 }
 
@@ -196,7 +196,7 @@ export async function runInspect(opts: ServerOpts): Promise<Envelope> {
     });
   } catch (err) {
     if (err instanceof ConfigError) return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
-    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+    return errorEnvelope(EXIT.CONNECTION_ERROR, friendlyError(err as Error));
   }
 }
 
@@ -212,7 +212,7 @@ export async function runListResources(opts: ServerOpts): Promise<Envelope> {
     });
   } catch (err) {
     if (err instanceof ConfigError) return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
-    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+    return errorEnvelope(EXIT.CONNECTION_ERROR, friendlyError(err as Error));
   }
 }
 
@@ -224,7 +224,7 @@ export async function runReadResource(uri: string, opts: ServerOpts): Promise<En
     });
   } catch (err) {
     if (err instanceof ConfigError) return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
-    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+    return errorEnvelope(EXIT.CONNECTION_ERROR, friendlyError(err as Error));
   }
 }
 
@@ -296,7 +296,7 @@ export async function runDiff(serverAlias: string, opts: ServerOpts): Promise<En
     });
   } catch (err) {
     if (err instanceof ConfigError) return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
-    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+    return errorEnvelope(EXIT.CONNECTION_ERROR, friendlyError(err as Error));
   }
 }
 
@@ -376,7 +376,7 @@ export async function runTest(opts: ServerOpts): Promise<Envelope> {
     });
   } catch (err) {
     if (err instanceof ConfigError) return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
-    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+    return errorEnvelope(EXIT.CONNECTION_ERROR, friendlyError(err as Error));
   }
 }
 

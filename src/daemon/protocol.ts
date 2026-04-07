@@ -1,3 +1,5 @@
+export const DAEMON_PROTOCOL_VERSION = 1;
+
 export interface DaemonRequest {
   id: number;
   method: "listTools" | "callTool" | "ping" | "shutdown" | "flush";
@@ -15,4 +17,5 @@ export interface DaemonResponse {
   id: number;
   result?: unknown;
   error?: string;
+  protocolVersion?: number; // included in ping response
 }

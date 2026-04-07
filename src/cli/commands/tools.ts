@@ -24,7 +24,20 @@ export function registerToolCommands(
 
   program
     .command("exec <tool>")
-    .description("Execute an MCP tool")
+    .description("Execute an MCP tool (use -s or -c to specify server)")
+    .addHelpText("after", `
+Tool-specific options (passed through to the tool):
+  --params <json>      Pass all arguments as JSON
+  --json <json>        Alias for --params
+  --params-stdin       Read params JSON from stdin
+  --field <name>       Extract a specific field from the result
+  --dry-run            Preview without executing
+  --help               Show tool parameter schema
+
+Examples:
+  mcpx -s "npx @mcp/server" exec greet --name World
+  mcpx -s "npx @mcp/server" exec search --params '{"query": "test"}'
+`)
     .allowUnknownOption()
     .allowExcessArguments()
     .helpOption(false)
