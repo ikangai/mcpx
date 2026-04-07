@@ -7,6 +7,8 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { addServer, removeServer, getServer, getAllServers, importServers } from "../config/store.js";
+import { generateSkill } from "../skills/generator.js";
+import { DaemonClient } from "../daemon/client.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import {
   type Envelope,
@@ -53,8 +55,31 @@ function resolveServer(opts: {
 async function withServer<T>(
   config: ServerConfig,
   fn: (client: McpClient, tools: Tool[]) => Promise<T>,
-  opts?: { verbose?: boolean; timeout?: number }
+  opts?: { verbose?: boolean; timeout?: number; serverAlias?: string }
 ): Promise<T> {
+  // Try daemon for cached connections when a server alias is available
+  if (opts?.serverAlias) {
+    try {
+      const daemon = new DaemonClient();
+      if (await daemon.tryConnect()) {
+        try {
+          const tools = await daemon.listTools(opts.serverAlias, config);
+          const proxyClient = {
+            callTool: async (name: string, args: Record<string, unknown>) => {
+              return daemon.callTool(opts.serverAlias!, config, name, args);
+            },
+          } as McpClient;
+          return await fn(proxyClient, tools);
+        } finally {
+          daemon.close();
+        }
+      }
+    } catch {
+      // Daemon not available, fall back to direct connection
+    }
+  }
+
+  // Direct connection fallback
   const client = new McpClient();
   try {
     await client.connect(config, { verbose: opts?.verbose, timeout: opts?.timeout });
@@ -215,7 +240,7 @@ export async function invokeTool(
       }
 
       return successResult(result.content);
-    }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined });
+    }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined, serverAlias: opts?.serverAlias });
   } catch (err) {
     return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
   }
@@ -247,7 +272,7 @@ export async function listTools(opts: ServerOpts): Promise<Envelope> {
           server: opts.serverAlias,
         }))
       );
-    }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined });
+    }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined, serverAlias: opts?.serverAlias });
   } catch (err) {
     return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
   }
@@ -269,7 +294,7 @@ async function listAllServers(opts?: ServerOpts): Promise<Envelope> {
           inputSchema: t.inputSchema as Record<string, unknown>,
           server: alias,
         }));
-      }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined });
+      }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined, serverAlias: alias });
     })
   );
 
@@ -308,7 +333,7 @@ export async function getToolSchema(
         ...tool.inputSchema,
         description: tool.description,
       } as Record<string, unknown>);
-    }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined });
+    }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined, serverAlias: opts?.serverAlias });
   } catch (err) {
     return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
   }
@@ -354,6 +379,25 @@ export async function runImport(configPath?: string): Promise<Envelope> {
     }]);
   } catch (err) {
     return errorEnvelope(EXIT.CONFIG_ERROR, (err as Error).message);
+  }
+}
+
+export async function runSkills(serverAlias: string, opts?: ServerOpts): Promise<Envelope> {
+  let serverConfig: ServerConfig;
+  try {
+    serverConfig = resolveServer({ serverAlias });
+  } catch (err) {
+    if (err instanceof ConfigError) return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
+    return errorEnvelope(EXIT.INTERNAL_ERROR, (err as Error).message);
+  }
+
+  try {
+    return await withServer(serverConfig, async (_client, tools) => {
+      const skill = generateSkill(serverAlias, tools);
+      return successResult([{ type: "text", text: skill }]);
+    }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined, serverAlias });
+  } catch (err) {
+    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
   }
 }
 

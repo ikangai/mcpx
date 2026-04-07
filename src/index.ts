@@ -16,10 +16,11 @@ import { readFileSync, existsSync } from "node:fs";
 })();
 
 import { Command } from "commander";
-import { invokeTool, listTools, runAdd, runServers, runRemove, getToolSchema, runImport } from "./cli/commands.js";
+import { invokeTool, listTools, runAdd, runServers, runRemove, getToolSchema, runImport, runSkills } from "./cli/commands.js";
 import { parseSlashCommand, parsePShorthand } from "./cli/router.js";
 import { runInteractive } from "./interactive/repl.js";
 import { output, errorEnvelope, EXIT, type Envelope } from "./output/envelope.js";
+import { DaemonClient } from "./daemon/client.js";
 
 const program = new Command();
 
@@ -107,12 +108,69 @@ program
   });
 
 program
+  .command("skills <server>")
+  .description("Generate agent skill documentation for a server")
+  .action(async (server: string) => {
+    const alias = server.startsWith("/") ? server.slice(1) : server;
+    const envelope = await runSkills(alias, program.opts());
+    output(envelope);
+  });
+
+program
   .command("interactive [server]")
   .alias("i")
   .description("Start interactive REPL mode")
   .action(async (server?: string) => {
     const alias = server?.startsWith("/") ? server.slice(1) : server;
     await runInteractive(program.opts(), alias);
+  });
+
+program
+  .command("daemon <action>")
+  .description("Manage the connection daemon (start|stop|status)")
+  .action(async (action: string) => {
+    const daemon = new DaemonClient();
+
+    if (action === "start") {
+      if (await daemon.tryConnect()) {
+        const alive = await daemon.ping();
+        daemon.close();
+        if (alive) {
+          output({ ok: true, type: "result", content: [{ type: "text", text: "Daemon is already running." }] } as Envelope);
+          return;
+        }
+      }
+      // tryConnect auto-starts the daemon
+      const connected = await daemon.tryConnect();
+      daemon.close();
+      if (connected) {
+        output({ ok: true, type: "result", content: [{ type: "text", text: "Daemon started." }] } as Envelope);
+      } else {
+        output(errorEnvelope(EXIT.INTERNAL_ERROR, "Failed to start daemon."));
+      }
+    } else if (action === "stop") {
+      if (await daemon.tryConnect()) {
+        await daemon.shutdown();
+        daemon.close();
+        output({ ok: true, type: "result", content: [{ type: "text", text: "Daemon stopped." }] } as Envelope);
+      } else {
+        output({ ok: true, type: "result", content: [{ type: "text", text: "Daemon is not running." }] } as Envelope);
+      }
+    } else if (action === "status") {
+      if (await daemon.tryConnect()) {
+        const alive = await daemon.ping();
+        daemon.close();
+        if (alive) {
+          output({ ok: true, type: "result", content: [{ type: "text", text: "Daemon is running." }] } as Envelope);
+        } else {
+          output({ ok: true, type: "result", content: [{ type: "text", text: "Daemon is not responding." }] } as Envelope);
+        }
+      } else {
+        output({ ok: true, type: "result", content: [{ type: "text", text: "Daemon is not running." }] } as Envelope);
+      }
+    } else {
+      output(errorEnvelope(EXIT.VALIDATION_ERROR, `Unknown daemon action: ${action}. Use start, stop, or status.`));
+    }
   });
 
 // Check for -p shorthand
