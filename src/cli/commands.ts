@@ -425,6 +425,50 @@ export async function runSkills(serverAlias: string, opts?: ServerOpts): Promise
   }
 }
 
+export async function runListPrompts(opts: ServerOpts): Promise<Envelope> {
+  let serverConfig: ServerConfig;
+  try { serverConfig = resolveServer(opts); }
+  catch (err) {
+    if (err instanceof ConfigError) return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
+    return errorEnvelope(EXIT.INTERNAL_ERROR, (err as Error).message);
+  }
+
+  const client = new McpClient();
+  try {
+    await client.connect(serverConfig, { verbose: opts?.verbose, timeout: opts?.timeout });
+    const prompts = await client.listPrompts();
+    return successResult([{ type: "text", text: JSON.stringify(prompts, null, 2) }]);
+  } catch (err) {
+    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+  } finally {
+    await client.close();
+  }
+}
+
+export async function runGetPrompt(
+  promptName: string,
+  promptArgs: Record<string, string>,
+  opts: ServerOpts
+): Promise<Envelope> {
+  let serverConfig: ServerConfig;
+  try { serverConfig = resolveServer(opts); }
+  catch (err) {
+    if (err instanceof ConfigError) return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
+    return errorEnvelope(EXIT.INTERNAL_ERROR, (err as Error).message);
+  }
+
+  const client = new McpClient();
+  try {
+    await client.connect(serverConfig, { verbose: opts?.verbose, timeout: opts?.timeout });
+    const result = await client.getPrompt(promptName, promptArgs);
+    return successResult([{ type: "text", text: JSON.stringify(result, null, 2) }]);
+  } catch (err) {
+    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+  } finally {
+    await client.close();
+  }
+}
+
 export async function runInspect(opts: ServerOpts): Promise<Envelope> {
   let serverConfig: ServerConfig;
   try {

@@ -22,7 +22,7 @@ if (configDirIdx !== -1 && configDirIdx + 1 < process.argv.length) {
 })();
 
 import { Command } from "commander";
-import { invokeTool, listTools, runAdd, runUpdate, runServers, runRemove, getToolSchema, runImport, runSkills, runInspect } from "./cli/commands.js";
+import { invokeTool, listTools, runAdd, runUpdate, runServers, runRemove, getToolSchema, runImport, runSkills, runInspect, runListPrompts, runGetPrompt } from "./cli/commands.js";
 import { parseSlashCommand, parsePShorthand, GLOBAL_VALUE_FLAGS } from "./cli/router.js";
 import { runInteractive } from "./interactive/repl.js";
 import { output, errorEnvelope, successResult, EXIT, type Envelope } from "./output/envelope.js";
@@ -215,6 +215,26 @@ program
   .action(async (server: string) => {
     const alias = server.startsWith("/") ? server.slice(1) : server;
     const envelope = await runInspect({ ...getOpts(), serverAlias: alias });
+    emitOutput(envelope);
+  });
+
+program
+  .command("prompts <server>")
+  .description("List available prompts from a server")
+  .action(async (server: string) => {
+    const alias = server.startsWith("/") ? server.slice(1) : server;
+    const envelope = await runListPrompts({ ...getOpts(), serverAlias: alias });
+    emitOutput(envelope);
+  });
+
+program
+  .command("prompt <server> <name>")
+  .description("Get a prompt template from a server")
+  .option("--args <json>", "Prompt arguments as JSON")
+  .action(async (server: string, name: string, opts: { args?: string }) => {
+    const alias = server.startsWith("/") ? server.slice(1) : server;
+    const args = opts.args ? JSON.parse(opts.args) : {};
+    const envelope = await runGetPrompt(name, args, { ...getOpts(), serverAlias: alias });
     emitOutput(envelope);
   });
 
