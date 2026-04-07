@@ -41,6 +41,7 @@ export interface Envelope {
   error?: { code: number; message: string };
   tools?: ToolInfo[];
   schema?: Record<string, unknown>;
+  servers?: Array<{ alias: string; command: string; args: string[]; env?: Record<string, string> }>;
 }
 
 export interface ContentItem {
