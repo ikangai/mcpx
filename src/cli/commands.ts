@@ -160,10 +160,25 @@ export async function invokeTool(
 
       // --help: show schema as usage
       if (toolArgs.includes("--help")) {
-        return successSchema({
-          ...tool.inputSchema,
-          description: tool.description,
-        } as Record<string, unknown>);
+        const helpSchema = tool.inputSchema as JsonSchema;
+        const helpProps = helpSchema.properties ?? {};
+        const helpRequired = new Set((helpSchema.required ?? []) as string[]);
+        const lines = [
+          `${tool.name} — ${tool.description ?? ""}`,
+          "",
+          "Parameters:",
+        ];
+        for (const [name, prop] of Object.entries(helpProps)) {
+          const p = prop as { type?: string; description?: string; default?: unknown; enum?: string[] };
+          const req = helpRequired.has(name) ? " (required)" : "";
+          const def = p.default !== undefined ? ` [default: ${JSON.stringify(p.default)}]` : "";
+          const choices = p.enum ? ` [choices: ${p.enum.join(", ")}]` : "";
+          lines.push(`  --${name} <${p.type ?? "any"}>${req}${def}${choices}`);
+          if (p.description) lines.push(`      ${p.description}`);
+        }
+        lines.push("", "  --params <json>   Pass all arguments as JSON");
+        lines.push("  --dry-run         Preview without executing");
+        return successResult([{ type: "text", text: lines.join("\n") }]);
       }
 
       // --dry-run: preview without executing
