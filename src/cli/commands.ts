@@ -143,6 +143,19 @@ export async function invokeTool(
         args = parseToolArgs(tmpCmd.opts(), tool.inputSchema as JsonSchema);
       }
 
+      // Validate required fields before calling server
+      const schema = tool.inputSchema as JsonSchema;
+      const required = ((schema.required ?? []) as string[]);
+      const missing = required.filter((name) => !(name in args) || args[name] === undefined);
+      if (missing.length > 0) {
+        const props = schema.properties ?? {};
+        const details = missing.map((name) => {
+          const prop = props[name] as { type?: string; description?: string } | undefined;
+          return `${name} (${prop?.type ?? "any"})`;
+        });
+        return errorEnvelope(EXIT.VALIDATION_ERROR, `Missing required field${missing.length > 1 ? "s" : ""}: ${details.join(", ")}`);
+      }
+
       // --help: show schema as usage
       if (toolArgs.includes("--help")) {
         return successSchema({
