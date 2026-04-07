@@ -259,22 +259,23 @@ async function listAllServers(opts?: ServerOpts): Promise<Envelope> {
     return successTools([]);
   }
 
-  const allTools: ToolInfo[] = [];
-  for (const [alias, config] of Object.entries(servers)) {
-    try {
-      await withServer(config, async (_client, tools) => {
-        allTools.push(
-          ...tools.map((t) => ({
-            name: t.name,
-            description: t.description,
-            inputSchema: t.inputSchema as Record<string, unknown>,
-            server: alias,
-          }))
-        );
+  const entries = Object.entries(servers);
+  const results = await Promise.allSettled(
+    entries.map(async ([alias, config]) => {
+      return await withServer(config, async (_client, tools) => {
+        return tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          inputSchema: t.inputSchema as Record<string, unknown>,
+          server: alias,
+        }));
       }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined });
-    } catch {
-      // Skip unreachable servers
-    }
+    })
+  );
+
+  const allTools: ToolInfo[] = [];
+  for (const r of results) {
+    if (r.status === "fulfilled") allTools.push(...r.value);
   }
   return successTools(allTools);
 }
