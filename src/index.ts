@@ -68,31 +68,29 @@ function emitOutput(envelope: Envelope, formatOverride?: string): never {
       console.error(envelope.error.message);
       process.exit(envelope.error.code);
     }
-    if (envelope.result) {
-      const resolved: Format = fmt === "auto" ? detectFormat() : fmt as Format;
-      console.log(formatResult({ content: envelope.result }, resolved));
-    } else if (envelope.tools) {
-      const resolved: Format = fmt === "auto" ? detectFormat() : fmt as Format;
-      console.log(formatToolList(envelope.tools.map(t => ({
-        name: t.name,
-        description: t.description ?? "",
-        inputSchema: t.inputSchema,
-      })) as Tool[], resolved));
-    } else if (envelope.schema) {
-      if (fmt === "yaml") {
-        console.log(YAML.stringify(envelope.schema));
+    const resolved: Format = fmt === "auto" ? detectFormat() : fmt as Format;
+    try {
+      if (envelope.result) {
+        console.log(formatResult({ content: envelope.result }, resolved));
+      } else if (envelope.tools) {
+        console.log(formatToolList(envelope.tools.map(t => ({
+          name: t.name,
+          description: t.description ?? "",
+          inputSchema: t.inputSchema,
+        })) as Tool[], resolved));
+      } else if (envelope.schema) {
+        console.log(fmt === "yaml" ? YAML.stringify(envelope.schema) : JSON.stringify(envelope.schema, null, 2));
+      } else if (envelope.servers) {
+        console.log(fmt === "yaml" ? YAML.stringify(envelope.servers) : JSON.stringify(envelope.servers, null, 2));
       } else {
-        console.log(JSON.stringify(envelope.schema, null, 2));
+        // Empty success (add, remove, update)
+        console.log("OK");
       }
-    } else if (envelope.servers) {
-      if (fmt === "yaml") {
-        console.log(YAML.stringify(envelope.servers));
-      } else {
-        console.log(JSON.stringify(envelope.servers, null, 2));
-      }
+    } catch (err) {
+      console.error(`Formatting error: ${(err as Error).message}`);
+      // Fall back to JSON envelope
+      console.log(JSON.stringify(envelope, null, 2));
     }
-    // Empty success (add, remove, update) — print confirmation for humans
-    console.log("OK");
     process.exit(0);
   }
   return output(envelope);
@@ -116,14 +114,11 @@ program
   .command("list [server]")
   .description("List available tools (optionally filter by /server)")
   .action(async (server?: string) => {
-    let envelope: Envelope;
+    const opts = getOpts();
     if (server?.startsWith("/")) {
-      envelope = await listTools({ ...getOpts(), serverAlias: server.slice(1) });
-    } else if (program.opts().server || program.opts().config) {
-      envelope = await listTools(getOpts());
-    } else {
-      envelope = await listTools(getOpts());
+      opts.serverAlias = server.slice(1);
     }
+    const envelope = await listTools(opts);
     emitOutput(envelope);
   });
 
@@ -308,7 +303,9 @@ function findBareServer(args: string[]): string | null {
 
 // Check for -p shorthand
 const pIdx = process.argv.indexOf("-p");
-if (pIdx !== -1 && pIdx + 1 < process.argv.length) {
+if (pIdx !== -1 && pIdx + 1 >= process.argv.length) {
+  output(errorEnvelope(EXIT.VALIDATION_ERROR, "Missing value for -p. Expected: -p '/server tool [--params '{}']'"));
+} else if (pIdx !== -1) {
   const pSlash = parsePShorthand(process.argv[pIdx + 1]);
   if (pSlash) {
     const globalOpts = extractGlobalOpts(process.argv);

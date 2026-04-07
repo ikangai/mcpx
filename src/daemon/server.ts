@@ -1,7 +1,7 @@
 import { createServer, type Server, type Socket } from "node:net";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { unlinkSync, existsSync, mkdirSync } from "node:fs";
+import { unlinkSync, existsSync, mkdirSync, chmodSync } from "node:fs";
 import { McpClient } from "../mcp/client.js";
 import type { ServerConfig } from "../mcp/config.js";
 import type { DaemonRequest, DaemonResponse } from "./protocol.js";
@@ -178,6 +178,10 @@ server.on("error", (err: NodeJS.ErrnoException) => {
 });
 
 server.listen(socketPath, () => {
+  // Restrict socket permissions to owner only (security: env vars with credentials pass through)
+  if (process.platform !== "win32") {
+    try { chmodSync(socketPath, 0o600); } catch { /* best effort */ }
+  }
   // Signal parent that daemon is ready
   if (process.send) process.send("ready");
 });

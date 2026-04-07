@@ -77,8 +77,12 @@ Agent-facing commands return a JSON envelope:
 
 ```json
 {"ok": true, "result": [{"type": "text", "text": "..."}]}
+{"ok": true, "tools": [{"name": "...", "description": "...", "inputSchema": {...}}]}
+{"ok": true}
 {"ok": false, "error": {"code": 3, "message": "Missing required: city"}}
 ```
+
+Success envelopes contain one of: `result` (tool output), `tools` (listing), `schema` (introspection), `servers` (registry), or no payload (add/remove/update confirmation).
 
 ## Exit Codes
 
