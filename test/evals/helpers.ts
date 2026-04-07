@@ -55,6 +55,8 @@ export interface ToolInfo {
   name: string;
   description?: string;
   inputSchema: Record<string, unknown>;
+  server?: string;
+  annotations?: Record<string, unknown>;
 }
 
 /**
