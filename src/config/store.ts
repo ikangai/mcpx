@@ -15,6 +15,7 @@ function getServersPath(): string {
 export interface ServersFile {
   mcpServers: Record<string, ServerConfig>;
   aliases?: Record<string, string>;
+  hooks?: Record<string, string>; // pattern -> shell command
 }
 
 // In-process cache to avoid repeated disk reads within a single CLI invocation
@@ -132,6 +133,33 @@ export function getAlias(name: string): string | undefined {
 
 export function getAllAliases(): Record<string, string> {
   return loadServers().aliases ?? {};
+}
+
+// ---------------------------------------------------------------------------
+// Hooks
+// ---------------------------------------------------------------------------
+
+export function addHook(pattern: string, command: string): void {
+  const validPattern = /^(before|after):[a-zA-Z0-9_-]+\.(\*|[a-zA-Z0-9_-]+)$/;
+  if (!validPattern.test(pattern)) {
+    throw new Error(`Invalid hook pattern: "${pattern}". Expected format: before:server.tool or after:server.*`);
+  }
+  const config = loadServers();
+  if (!config.hooks) config.hooks = {};
+  config.hooks[pattern] = command;
+  saveServers(config);
+}
+
+export function removeHook(pattern: string): boolean {
+  const config = loadServers();
+  if (!config.hooks || !(pattern in config.hooks)) return false;
+  delete config.hooks[pattern];
+  saveServers(config);
+  return true;
+}
+
+export function getHooks(): Record<string, string> {
+  return loadServers().hooks ?? {};
 }
 
 // ---------------------------------------------------------------------------
