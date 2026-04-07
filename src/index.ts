@@ -20,18 +20,66 @@ import { invokeTool, listTools, runAdd, runServers, runRemove, getToolSchema, ru
 import { parseSlashCommand, parsePShorthand } from "./cli/router.js";
 import { runInteractive } from "./interactive/repl.js";
 import { output, errorEnvelope, successResult, EXIT, type Envelope } from "./output/envelope.js";
+import { formatResult, formatToolList, detectFormat, type Format } from "./output/formatter.js";
+import YAML from "yaml";
 import { DaemonClient } from "./daemon/client.js";
 
-function extractGlobalOpts(argv: string[]): { verbose?: boolean; timeout?: string } {
-  const opts: { verbose?: boolean; timeout?: string } = {};
+function extractGlobalOpts(argv: string[]): { verbose?: boolean; timeout?: number } {
+  const opts: { verbose?: boolean; timeout?: number } = {};
   const args = argv.slice(2);
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--verbose" || args[i] === "-v") opts.verbose = true;
     if ((args[i] === "--timeout" || args[i] === "-t") && i + 1 < args.length) {
-      opts.timeout = args[i + 1];
+      opts.timeout = Number(args[i + 1]);
     }
   }
   return opts;
+}
+
+/** Parse commander opts with timeout converted to number */
+function getOpts(): import("./cli/commands.js").ServerOpts {
+  const raw = program.opts();
+  return {
+    ...raw,
+    timeout: raw.timeout ? Number(raw.timeout) : undefined,
+  };
+}
+
+/**
+ * Emit output in the requested format.
+ * When --format is table or yaml, unwrap the envelope for human-friendly display.
+ * When --format is json or omitted, emit the raw JSON envelope (agent-facing).
+ */
+function emitOutput(envelope: Envelope): never {
+  const fmt = program.opts().format;
+  if (fmt && fmt !== "json") {
+    if (!envelope.ok) {
+      console.error(envelope.error.message);
+      process.exit(envelope.error.code);
+    }
+    if (envelope.result) {
+      const resolved: Format = fmt === "auto" ? detectFormat() : fmt as Format;
+      console.log(formatResult({ content: envelope.result as any }, resolved));
+    } else if (envelope.tools) {
+      const resolved: Format = fmt === "auto" ? detectFormat() : fmt as Format;
+      console.log(formatToolList(envelope.tools as any, resolved));
+    } else if (envelope.schema) {
+      if (fmt === "yaml") {
+        console.log(YAML.stringify(envelope.schema));
+      } else {
+        console.log(JSON.stringify(envelope.schema, null, 2));
+      }
+    } else if (envelope.servers) {
+      if (fmt === "yaml") {
+        console.log(YAML.stringify(envelope.servers));
+      } else {
+        console.log(JSON.stringify(envelope.servers, null, 2));
+      }
+    }
+    // Empty success (add, remove) — nothing to display
+    process.exit(0);
+  }
+  return output(envelope);
 }
 
 const program = new Command();
@@ -44,7 +92,8 @@ program
   .option("-c, --config <file>", "Path to config file")
   .option("-n, --server-name <name>", "Server name from config")
   .option("-v, --verbose", "Show debug info")
-  .option("-t, --timeout <ms>", "Connection timeout in milliseconds", "30000");
+  .option("-t, --timeout <ms>", "Connection timeout in milliseconds", "30000")
+  .option("-f, --format <format>", "Output format: json | table | yaml");
 
 program
   .command("list [server]")
@@ -52,13 +101,13 @@ program
   .action(async (server?: string) => {
     let envelope: Envelope;
     if (server?.startsWith("/")) {
-      envelope = await listTools({ serverAlias: server.slice(1) });
+      envelope = await listTools({ ...getOpts(), serverAlias: server.slice(1) });
     } else if (program.opts().server || program.opts().config) {
-      envelope = await listTools(program.opts());
+      envelope = await listTools(getOpts());
     } else {
       envelope = await listTools({});
     }
-    output(envelope);
+    emitOutput(envelope);
   });
 
 program
@@ -68,8 +117,8 @@ program
   .allowExcessArguments()
   .action(async (toolName: string, _opts: unknown, cmd: Command) => {
     const toolArgs = cmd.args.filter((a) => a !== toolName);
-    const envelope = await invokeTool(toolName, toolArgs, program.opts());
-    output(envelope);
+    const envelope = await invokeTool(toolName, toolArgs, getOpts());
+    emitOutput(envelope);
   });
 
 program
@@ -83,7 +132,7 @@ program
       if (idx > 0) env[e.slice(0, idx)] = e.slice(idx + 1);
     }
     const envelope = await runAdd(alias, command, Object.keys(env).length > 0 ? env : undefined);
-    output(envelope);
+    emitOutput(envelope);
   });
 
 program
@@ -91,8 +140,8 @@ program
   .description("Show full input schema for a tool")
   .action(async (server: string, tool: string) => {
     const alias = server.startsWith("/") ? server.slice(1) : server;
-    const envelope = await getToolSchema(tool, { serverAlias: alias });
-    output(envelope);
+    const envelope = await getToolSchema(tool, { ...getOpts(), serverAlias: alias });
+    emitOutput(envelope);
   });
 
 program
@@ -100,7 +149,7 @@ program
   .description("List registered servers")
   .action(async () => {
     const envelope = await runServers();
-    output(envelope);
+    emitOutput(envelope);
   });
 
 program
@@ -108,7 +157,7 @@ program
   .description("Remove a registered server")
   .action(async (alias: string) => {
     const envelope = await runRemove(alias);
-    output(envelope);
+    emitOutput(envelope);
   });
 
 program
@@ -116,7 +165,7 @@ program
   .description("Import servers from Claude Desktop config")
   .action(async (configPath?: string) => {
     const envelope = await runImport(configPath);
-    output(envelope);
+    emitOutput(envelope);
   });
 
 program
@@ -124,8 +173,8 @@ program
   .description("Generate agent skill documentation for a server")
   .action(async (server: string) => {
     const alias = server.startsWith("/") ? server.slice(1) : server;
-    const envelope = await runSkills(alias, program.opts());
-    output(envelope);
+    const envelope = await runSkills(alias, getOpts());
+    emitOutput(envelope);
   });
 
 program
@@ -134,7 +183,7 @@ program
   .description("Start interactive REPL mode")
   .action(async (server?: string) => {
     const alias = server?.startsWith("/") ? server.slice(1) : server;
-    await runInteractive(program.opts(), alias);
+    await runInteractive(getOpts(), alias);
   });
 
 program
@@ -148,7 +197,7 @@ program
         const alive = await daemon.ping();
         daemon.close();
         if (alive) {
-          output(successResult([{ type: "text", text: "Daemon is already running." }]));
+          emitOutput(successResult([{ type: "text", text: "Daemon is already running." }]));
           return;
         }
       }
@@ -156,32 +205,32 @@ program
       const connected = await daemon.tryConnect();
       daemon.close();
       if (connected) {
-        output(successResult([{ type: "text", text: "Daemon started." }]));
+        emitOutput(successResult([{ type: "text", text: "Daemon started." }]));
       } else {
-        output(errorEnvelope(EXIT.INTERNAL_ERROR, "Failed to start daemon."));
+        emitOutput(errorEnvelope(EXIT.INTERNAL_ERROR, "Failed to start daemon."));
       }
     } else if (action === "stop") {
       if (await daemon.tryConnect()) {
         await daemon.shutdown();
         daemon.close();
-        output(successResult([{ type: "text", text: "Daemon stopped." }]));
+        emitOutput(successResult([{ type: "text", text: "Daemon stopped." }]));
       } else {
-        output(successResult([{ type: "text", text: "Daemon is not running." }]));
+        emitOutput(successResult([{ type: "text", text: "Daemon is not running." }]));
       }
     } else if (action === "status") {
       if (await daemon.tryConnect()) {
         const alive = await daemon.ping();
         daemon.close();
         if (alive) {
-          output(successResult([{ type: "text", text: "Daemon is running." }]));
+          emitOutput(successResult([{ type: "text", text: "Daemon is running." }]));
         } else {
-          output(successResult([{ type: "text", text: "Daemon is not responding." }]));
+          emitOutput(successResult([{ type: "text", text: "Daemon is not responding." }]));
         }
       } else {
-        output(successResult([{ type: "text", text: "Daemon is not running." }]));
+        emitOutput(successResult([{ type: "text", text: "Daemon is not running." }]));
       }
     } else {
-      output(errorEnvelope(EXIT.VALIDATION_ERROR, `Unknown daemon action: ${action}. Use start, stop, or status.`));
+      emitOutput(errorEnvelope(EXIT.VALIDATION_ERROR, `Unknown daemon action: ${action}. Use start, stop, or status.`));
     }
   });
 
