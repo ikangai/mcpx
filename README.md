@@ -44,6 +44,18 @@ mcpx /weather get-forecast --city Berlin
 | `mcpx import [path]` | Import from Claude Desktop config |
 | `mcpx skills /server` | Generate agent skill docs |
 | `mcpx daemon start\|stop\|status` | Manage connection daemon |
+| `mcpx inspect /server` | Show server capabilities and metadata |
+| `mcpx prompts /server` | List MCP prompt templates |
+| `mcpx prompt /server <name>` | Get a prompt template |
+| `mcpx resources /server` | List MCP resources |
+| `mcpx resource /server <uri>` | Read a resource |
+| `mcpx diff /server` | Compare tool schemas against snapshot |
+| `mcpx test /server` | Verify server health |
+| `mcpx watch <interval> /server <tool>` | Periodic re-execution |
+| `mcpx workflow <file>` | Run multi-step YAML workflow |
+| `mcpx hook add\|list\|remove` | Manage middleware hooks |
+| `mcpx alias set\|list\|remove` | Manage tool aliases |
+| `mcpx run <name>` | Execute a saved alias |
 
 ## Invocation Patterns
 
@@ -59,6 +71,12 @@ mcpx -p '/server tool --params \'{"key": "value"}\''
 
 # Legacy exec mode
 mcpx -s "npx @mcp/server" exec tool --key value
+
+# Pipe output between tools
+mcpx /pg execute_sql --params '{"sql":"SELECT id FROM users"}' | mcpx /pg get_column_cardinality --params-stdin
+
+# Extract a specific field
+mcpx /pg database_overview --field uptime
 ```
 
 ## Output Formats
@@ -69,6 +87,8 @@ By default, all commands return a JSON envelope (agent-friendly). Use `--format`
 mcpx list /weather --format table    # tabular output
 mcpx list /weather --format yaml     # YAML output
 mcpx list /weather --format json     # JSON envelope (default)
+mcpx list /weather --format csv      # CSV output
+mcpx list /weather --format markdown # Markdown table
 ```
 
 ## Output Contract
@@ -118,6 +138,73 @@ mcpx daemon stop     # Stop daemon
 ```
 
 The daemon auto-exits after 5 minutes of inactivity.
+
+## MCP Protocol Features
+
+mcpx exposes the full MCP protocol surface — not just tools:
+
+```bash
+mcpx inspect /pg              # server name, version, capabilities, instructions
+mcpx prompts /pg              # list prompt templates
+mcpx prompt /pg debug-query   # get a specific prompt
+mcpx resources /pg            # list data resources
+mcpx resource /pg <uri>       # read a resource
+```
+
+## MCP Gateway
+
+mcpx can act as a universal MCP aggregator, exposing all registered servers through a single connection:
+
+```bash
+mcpx serve                   # stdio (for Claude Desktop / Cursor)
+mcpx serve --port 8080       # HTTP (for remote agents)
+curl http://localhost:8080/health
+```
+
+## Workflows
+
+Run multi-step operations across servers with YAML workflow files:
+
+```yaml
+# workflow.yaml
+name: Daily Report
+steps:
+  - server: pg
+    tool: execute_sql
+    params: { sql: "SELECT count(*) as n FROM orders" }
+    output: count
+  - server: slack
+    tool: send_message
+    params: { text: "Orders today: {{count}}" }
+```
+
+```bash
+mcpx workflow workflow.yaml
+```
+
+Steps execute sequentially. Use `output` to name variables, `{{var}}` to interpolate.
+
+## Hooks
+
+Run shell commands before or after tool calls:
+
+```bash
+mcpx hook add 'before:pg.*' 'echo "$MCPX_TOOL" >> /var/log/mcpx.log'
+mcpx hook add 'after:pg.execute_sql' 'notify-send "SQL executed"'
+mcpx hook list
+mcpx hook remove 'before:pg.*'
+```
+
+Hooks receive `MCPX_SERVER`, `MCPX_TOOL`, and `MCPX_PARAMS` environment variables.
+
+## Monitoring & Observability
+
+```bash
+mcpx watch 5s /pg list_active_queries       # poll every 5 seconds (NDJSON output)
+mcpx test /pg                               # health check with latency
+mcpx diff /pg                               # detect schema changes
+mcpx --log /var/log/mcpx.ndjson /pg tool    # audit trail
+```
 
 ## Agent Skills
 
