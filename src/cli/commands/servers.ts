@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { Envelope } from "../../output/envelope.js";
-import { runAdd, runUpdate, runServers, runRemove, runImport } from "../commands.js";
+import { runAdd, runUpdate, runServers, runRemove, runImport } from "../operations.js";
 import type { ServerOpts } from "../commands.js";
 
 export function registerServerCommands(

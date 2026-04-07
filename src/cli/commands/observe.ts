@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import type { Envelope } from "../../output/envelope.js";
-import { runSkills, runInspect, runListPrompts, runGetPrompt, runListResources, runReadResource, runDiff, runTest } from "../commands.js";
+import { runSkills, runInspect, runListPrompts, runGetPrompt, runListResources, runReadResource, runDiff, runTest } from "../operations.js";
 import type { ServerOpts } from "../commands.js";
 
 export function registerObserveCommands(
