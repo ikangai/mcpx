@@ -52,13 +52,13 @@ export function getAllServers(): Record<string, ServerConfig> {
   return loadServers().mcpServers;
 }
 
-export function importServers(configPath: string): string[] {
+export function importServers(configPath: string, force = false): string[] {
   const raw = readFileSync(configPath, "utf-8");
   const external = JSON.parse(raw) as ServersFile;
   const current = loadServers();
   const imported: string[] = [];
   for (const [alias, config] of Object.entries(external.mcpServers ?? {})) {
-    if (!(alias in current.mcpServers)) {
+    if (force || !(alias in current.mcpServers)) {
       current.mcpServers[alias] = config;
       imported.push(alias);
     }

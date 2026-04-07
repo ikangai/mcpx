@@ -364,6 +364,14 @@ export async function runRemove(alias: string): Promise<Envelope> {
   if (!removeServer(alias)) {
     return errorEnvelope(EXIT.CONFIG_ERROR, `Server "${alias}" not found.`);
   }
+  // Flush daemon cache for this alias
+  try {
+    const daemon = new DaemonClient();
+    if (await daemon.tryConnect()) {
+      await daemon.flush(alias);
+      daemon.close();
+    }
+  } catch { /* ignore */ }
   return successEmpty();
 }
 
@@ -371,16 +379,24 @@ export async function runUpdate(alias: string, opts: { command?: string; env?: R
   if (!updateServer(alias, opts)) {
     return errorEnvelope(EXIT.CONFIG_ERROR, `Server "${alias}" not found.`);
   }
+  // Flush daemon cache for this alias
+  try {
+    const daemon = new DaemonClient();
+    if (await daemon.tryConnect()) {
+      await daemon.flush(alias);
+      daemon.close();
+    }
+  } catch { /* ignore */ }
   return successEmpty();
 }
 
-export async function runImport(configPath?: string): Promise<Envelope> {
+export async function runImport(configPath?: string, force = false): Promise<Envelope> {
   const path = configPath ?? findClaudeConfig();
   if (!path) {
     return errorEnvelope(EXIT.CONFIG_ERROR, "No config file found. Provide a path or install Claude Desktop.");
   }
   try {
-    const imported = importServers(path);
+    const imported = importServers(path, force);
     return successResult([{
       type: "text",
       text: `Imported ${imported.length} server(s): ${imported.join(", ") || "(none new)"}`,

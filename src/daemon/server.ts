@@ -109,6 +109,17 @@ async function handleMessage(socket: Socket, rawMessage: string) {
       process.exit(0);
     }
 
+    if (req.method === "flush") {
+      if (req.serverAlias) {
+        await pool.remove(req.serverAlias);
+        respond({ id: req.id, result: `Flushed connection for ${req.serverAlias}` });
+      } else {
+        await pool.closeAll();
+        respond({ id: req.id, result: "Flushed all connections" });
+      }
+      return;
+    }
+
     if (!req.serverConfig) {
       respond({ id: req.id, error: "Missing serverConfig" });
       return;

@@ -12,7 +12,9 @@ export interface SlashCommand {
 }
 
 /** Global flags that consume a following value */
-const GLOBAL_VALUE_FLAGS = new Set(["--server", "-s", "--config", "-c", "--server-name", "-n", "--timeout", "-t"]);
+const GLOBAL_VALUE_FLAGS = new Set(["--server", "-s", "--config", "-c", "--server-name", "-n", "--timeout", "-t", "--format", "-f", "--config-dir"]);
+
+export { GLOBAL_VALUE_FLAGS };
 
 export function parseSlashCommand(argv: string[]): SlashCommand | null {
   // Skip node and script path (argv[0], argv[1])

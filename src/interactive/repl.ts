@@ -1,29 +1,9 @@
 import { search, input, confirm, select, number as numberPrompt } from "@inquirer/prompts";
 import chalk from "chalk";
 import { McpClient } from "../mcp/client.js";
-import { parseServerSpec, parseConfigFile, type ServerConfig } from "../mcp/config.js";
-import { getServer } from "../config/store.js";
 import { formatResult, detectFormat } from "../output/formatter.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { readFileSync } from "node:fs";
-
-function resolveServerConfig(opts: {
-  server?: string;
-  config?: string;
-  serverName?: string;
-}, serverAlias?: string): ServerConfig {
-  if (serverAlias) {
-    const config = getServer(serverAlias);
-    if (!config) throw new Error(`Server "${serverAlias}" not found.`);
-    return config;
-  }
-  if (opts.server) return parseServerSpec(opts.server);
-  if (opts.config) {
-    const raw = readFileSync(opts.config, "utf-8");
-    return parseConfigFile(JSON.parse(raw), opts.serverName);
-  }
-  throw new Error("Specify --server, --config, or a server alias");
-}
+import { resolveServer, ConfigError } from "../cli/commands.js";
 
 async function promptForArgs(
   tool: Tool
@@ -83,7 +63,10 @@ export async function runInteractive(globalOpts: {
   config?: string;
   serverName?: string;
 }, serverAlias?: string): Promise<void> {
-  const serverConfig = resolveServerConfig(globalOpts, serverAlias);
+  const serverConfig = resolveServer({
+    ...globalOpts,
+    serverAlias,
+  });
   const client = new McpClient();
 
   try {

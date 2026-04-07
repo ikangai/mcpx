@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 import { readFileSync, existsSync } from "node:fs";
 
+// Early arg scanning for --config-dir (must be set before any imports read it)
+const configDirIdx = process.argv.indexOf("--config-dir");
+if (configDirIdx !== -1 && configDirIdx + 1 < process.argv.length) {
+  process.env.MCPX_CONFIG_DIR = process.argv[configDirIdx + 1];
+}
+
 // Load .env file from cwd (before any other imports read env)
 (function loadDotEnv() {
   if (!existsSync(".env")) return;
@@ -17,20 +23,25 @@ import { readFileSync, existsSync } from "node:fs";
 
 import { Command } from "commander";
 import { invokeTool, listTools, runAdd, runUpdate, runServers, runRemove, getToolSchema, runImport, runSkills } from "./cli/commands.js";
-import { parseSlashCommand, parsePShorthand } from "./cli/router.js";
+import { parseSlashCommand, parsePShorthand, GLOBAL_VALUE_FLAGS } from "./cli/router.js";
 import { runInteractive } from "./interactive/repl.js";
 import { output, errorEnvelope, successResult, EXIT, type Envelope } from "./output/envelope.js";
 import { formatResult, formatToolList, detectFormat, type Format } from "./output/formatter.js";
+import { generateBashCompletion, generateZshCompletion } from "./cli/completion.js";
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import YAML from "yaml";
 import { DaemonClient } from "./daemon/client.js";
 
-function extractGlobalOpts(argv: string[]): { verbose?: boolean; timeout?: number } {
-  const opts: { verbose?: boolean; timeout?: number } = {};
+function extractGlobalOpts(argv: string[]): { verbose?: boolean; timeout?: number; format?: string } {
+  const opts: { verbose?: boolean; timeout?: number; format?: string } = {};
   const args = argv.slice(2);
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--verbose" || args[i] === "-v") opts.verbose = true;
     if ((args[i] === "--timeout" || args[i] === "-t") && i + 1 < args.length) {
       opts.timeout = Number(args[i + 1]);
+    }
+    if ((args[i] === "--format" || args[i] === "-f") && i + 1 < args.length) {
+      opts.format = args[i + 1];
     }
   }
   return opts;
@@ -50,8 +61,8 @@ function getOpts(): import("./cli/commands.js").ServerOpts {
  * When --format is table or yaml, unwrap the envelope for human-friendly display.
  * When --format is json or omitted, emit the raw JSON envelope (agent-facing).
  */
-function emitOutput(envelope: Envelope): never {
-  const fmt = program.opts().format;
+function emitOutput(envelope: Envelope, formatOverride?: string): never {
+  const fmt = formatOverride ?? program.opts().format;
   if (fmt && fmt !== "json") {
     if (!envelope.ok) {
       console.error(envelope.error.message);
@@ -59,10 +70,14 @@ function emitOutput(envelope: Envelope): never {
     }
     if (envelope.result) {
       const resolved: Format = fmt === "auto" ? detectFormat() : fmt as Format;
-      console.log(formatResult({ content: envelope.result as any }, resolved));
+      console.log(formatResult({ content: envelope.result }, resolved));
     } else if (envelope.tools) {
       const resolved: Format = fmt === "auto" ? detectFormat() : fmt as Format;
-      console.log(formatToolList(envelope.tools as any, resolved));
+      console.log(formatToolList(envelope.tools.map(t => ({
+        name: t.name,
+        description: t.description ?? "",
+        inputSchema: t.inputSchema,
+      })) as Tool[], resolved));
     } else if (envelope.schema) {
       if (fmt === "yaml") {
         console.log(YAML.stringify(envelope.schema));
@@ -76,7 +91,8 @@ function emitOutput(envelope: Envelope): never {
         console.log(JSON.stringify(envelope.servers, null, 2));
       }
     }
-    // Empty success (add, remove) — nothing to display
+    // Empty success (add, remove, update) — print confirmation for humans
+    console.log("OK");
     process.exit(0);
   }
   return output(envelope);
@@ -93,7 +109,8 @@ program
   .option("-n, --server-name <name>", "Server name from config")
   .option("-v, --verbose", "Show debug info")
   .option("-t, --timeout <ms>", "Connection timeout in milliseconds", "30000")
-  .option("-f, --format <format>", "Output format: json | table | yaml");
+  .option("-f, --format <format>", "Output format: json | table | yaml")
+  .option("--config-dir <path>", "Override config directory (default: ~/.config/mcpx)");
 
 program
   .command("list [server]")
@@ -105,7 +122,7 @@ program
     } else if (program.opts().server || program.opts().config) {
       envelope = await listTools(getOpts());
     } else {
-      envelope = await listTools({});
+      envelope = await listTools(getOpts());
     }
     emitOutput(envelope);
   });
@@ -115,6 +132,7 @@ program
   .description("Execute an MCP tool")
   .allowUnknownOption()
   .allowExcessArguments()
+  .helpOption(false)
   .action(async (toolName: string, _opts: unknown, cmd: Command) => {
     const toolArgs = cmd.args.filter((a) => a !== toolName);
     const envelope = await invokeTool(toolName, toolArgs, getOpts());
@@ -181,8 +199,9 @@ program
 program
   .command("import [config-path]")
   .description("Import servers from Claude Desktop config")
-  .action(async (configPath?: string) => {
-    const envelope = await runImport(configPath);
+  .option("--force", "Overwrite existing server aliases")
+  .action(async (configPath?: string, opts?: { force?: boolean }) => {
+    const envelope = await runImport(configPath, opts?.force);
     emitOutput(envelope);
   });
 
@@ -205,8 +224,21 @@ program
   });
 
 program
+  .command("completion [shell]")
+  .description("Generate shell completion script (bash or zsh)")
+  .action((shell?: string) => {
+    const s = shell ?? (process.env.SHELL?.includes("zsh") ? "zsh" : "bash");
+    if (s === "zsh") {
+      console.log(generateZshCompletion());
+    } else {
+      console.log(generateBashCompletion());
+    }
+    process.exit(0);
+  });
+
+program
   .command("daemon <action>")
-  .description("Manage the connection daemon (start|stop|status)")
+  .description("Manage the connection daemon (start|stop|status|flush)")
   .action(async (action: string) => {
     const daemon = new DaemonClient();
 
@@ -247,10 +279,32 @@ program
       } else {
         emitOutput(successResult([{ type: "text", text: "Daemon is not running." }]));
       }
+    } else if (action === "flush") {
+      if (await daemon.tryConnect()) {
+        await daemon.flush();
+        daemon.close();
+        emitOutput(successResult([{ type: "text", text: "All cached connections flushed." }]));
+      } else {
+        emitOutput(successResult([{ type: "text", text: "Daemon is not running." }]));
+      }
     } else {
-      emitOutput(errorEnvelope(EXIT.VALIDATION_ERROR, `Unknown daemon action: ${action}. Use start, stop, or status.`));
+      emitOutput(errorEnvelope(EXIT.VALIDATION_ERROR, `Unknown daemon action: ${action}. Use start, stop, status, or flush.`));
     }
   });
+
+/**
+ * Find a bare /server arg (no tool name following it) after skipping global flags.
+ * Returns the server alias (without leading /) or null.
+ */
+function findBareServer(args: string[]): string | null {
+  for (let i = 0; i < args.length; i++) {
+    if (GLOBAL_VALUE_FLAGS.has(args[i])) { i++; continue; }
+    if (args[i] === "--verbose" || args[i] === "-v") continue;
+    if (args[i].startsWith("/")) return args[i].slice(1);
+    break;
+  }
+  return null;
+}
 
 // Check for -p shorthand
 const pIdx = process.argv.indexOf("-p");
@@ -259,8 +313,8 @@ if (pIdx !== -1 && pIdx + 1 < process.argv.length) {
   if (pSlash) {
     const globalOpts = extractGlobalOpts(process.argv);
     invokeTool(pSlash.toolName, pSlash.toolArgs, { serverAlias: pSlash.serverAlias, ...globalOpts })
-      .then((envelope) => output(envelope))
-      .catch((err) => output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message)));
+      .then((envelope) => emitOutput(envelope, globalOpts.format))
+      .catch((err) => emitOutput(errorEnvelope(EXIT.INTERNAL_ERROR, err.message), globalOpts.format));
   } else {
     output(errorEnvelope(EXIT.VALIDATION_ERROR, "Invalid -p format. Expected: /server tool [--params '{}']"));
   }
@@ -270,11 +324,20 @@ if (pIdx !== -1 && pIdx + 1 < process.argv.length) {
   if (slash) {
     const globalOpts = extractGlobalOpts(process.argv);
     invokeTool(slash.toolName, slash.toolArgs, { serverAlias: slash.serverAlias, ...globalOpts })
-      .then((envelope) => output(envelope))
-      .catch((err) => output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message)));
+      .then((envelope) => emitOutput(envelope, globalOpts.format))
+      .catch((err) => emitOutput(errorEnvelope(EXIT.INTERNAL_ERROR, err.message), globalOpts.format));
   } else {
-    program.parseAsync().catch((err) => {
-      output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message));
-    });
+    // Check for bare /server (no tool name) — treat as list
+    const bareServer = findBareServer(process.argv.slice(2));
+    if (bareServer) {
+      const globalOpts = extractGlobalOpts(process.argv);
+      listTools({ ...globalOpts, serverAlias: bareServer })
+        .then((envelope) => emitOutput(envelope, globalOpts.format))
+        .catch((err) => emitOutput(errorEnvelope(EXIT.INTERNAL_ERROR, err.message), globalOpts.format));
+    } else {
+      program.parseAsync().catch((err) => {
+        output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message));
+      });
+    }
   }
 }

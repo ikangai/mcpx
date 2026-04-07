@@ -60,6 +60,10 @@ export function successServers(servers: ServerInfo[]): SuccessEnvelope {
   return { ok: true, servers };
 }
 
+export function successEmpty(): SuccessEnvelope {
+  return { ok: true };
+}
+
 export function errorEnvelope(code: number, message: string): ErrorEnvelope {
   return { ok: false, error: { code, message } };
 }

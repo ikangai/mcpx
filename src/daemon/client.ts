@@ -166,6 +166,13 @@ export class DaemonClient {
     }
   }
 
+  async flush(alias?: string): Promise<void> {
+    await this.send({
+      method: "flush",
+      serverAlias: alias ?? "",
+    });
+  }
+
   async shutdown(): Promise<void> {
     try {
       await this.send({
