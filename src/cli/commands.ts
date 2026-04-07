@@ -147,29 +147,54 @@ export async function invokeTool(
         );
       }
 
-      // Parse args: --params/--json takes precedence, then per-field flags
-      const params = extractParams(toolArgs);
+      // Parse args: --params-stdin > --params/--json > per-field flags
       let args: Record<string, unknown>;
 
-      if (params !== null) {
+      if (toolArgs.includes("--params-stdin")) {
         try {
-          args = JSON.parse(params);
+          const stdinData = readFileSync(0, "utf-8").trim();
+          try {
+            const parsed = JSON.parse(stdinData);
+            // Auto-unwrap envelope: if it's an mcpx envelope with result text, extract the text
+            if (parsed.ok === true && Array.isArray(parsed.result) && parsed.result[0]?.text) {
+              try { args = JSON.parse(parsed.result[0].text); }
+              catch { args = parsed; }
+            } else {
+              args = parsed;
+            }
+          } catch {
+            return errorEnvelope(EXIT.VALIDATION_ERROR, "Invalid JSON from stdin");
+          }
         } catch {
-          return errorEnvelope(EXIT.VALIDATION_ERROR, "Invalid JSON in --params/--json");
+          return errorEnvelope(EXIT.VALIDATION_ERROR, "Failed to read from stdin");
         }
       } else {
-        const filteredArgs = toolArgs.filter(
-          (a) => a !== "--dry-run" && a !== "--help"
-        );
-        const tmpCmd = new Command(toolName);
-        tmpCmd.exitOverride();
-        addToolFlags(tmpCmd, tool.inputSchema as JsonSchema);
-        try {
-          tmpCmd.parse(filteredArgs, { from: "user" });
-        } catch (err) {
-          return errorEnvelope(EXIT.VALIDATION_ERROR, (err as Error).message);
+        const params = extractParams(toolArgs);
+        if (params !== null) {
+          try {
+            args = JSON.parse(params);
+          } catch {
+            return errorEnvelope(EXIT.VALIDATION_ERROR, "Invalid JSON in --params/--json");
+          }
+        } else {
+          // Filter out meta flags before parsing tool flags
+          const filteredArgs = toolArgs.filter((a, i) => {
+            if (a === "--dry-run" || a === "--help") return false;
+            if (a === "--field") return false;
+            // Also skip the value after --field
+            if (i > 0 && toolArgs[i - 1] === "--field") return false;
+            return true;
+          });
+          const tmpCmd = new Command(toolName);
+          tmpCmd.exitOverride();
+          addToolFlags(tmpCmd, tool.inputSchema as JsonSchema);
+          try {
+            tmpCmd.parse(filteredArgs, { from: "user" });
+          } catch (err) {
+            return errorEnvelope(EXIT.VALIDATION_ERROR, (err as Error).message);
+          }
+          args = parseToolArgs(tmpCmd.opts(), tool.inputSchema as JsonSchema);
         }
-        args = parseToolArgs(tmpCmd.opts(), tool.inputSchema as JsonSchema);
       }
 
       // --help: show schema as usage
@@ -190,8 +215,10 @@ export async function invokeTool(
           lines.push(`  --${name} <${p.type ?? "any"}>${req}${def}${choices}`);
           if (p.description) lines.push(`      ${p.description}`);
         }
-        lines.push("", "  --params <json>   Pass all arguments as JSON");
-        lines.push("  --dry-run         Preview without executing");
+        lines.push("", "  --params <json>     Pass all arguments as JSON");
+        lines.push("  --params-stdin      Read arguments as JSON from stdin");
+        lines.push("  --field <name>      Extract a field from JSON result");
+        lines.push("  --dry-run           Preview without executing");
         return successResult([{ type: "text", text: lines.join("\n") }]);
       }
 
@@ -238,6 +265,24 @@ export async function invokeTool(
           .map((c) => c.text)
           .join("\n");
         return errorEnvelope(EXIT.TOOL_ERROR, msg || "Tool returned an error");
+      }
+
+      // --field: extract a specific field from JSON result
+      const fieldIdx = toolArgs.indexOf("--field");
+      if (fieldIdx !== -1 && fieldIdx + 1 < toolArgs.length) {
+        const fieldName = toolArgs[fieldIdx + 1];
+        const extracted: ContentItem[] = result.content.map((c) => {
+          if (c.type === "text" && c.text) {
+            try {
+              const parsed = JSON.parse(c.text);
+              if (fieldName in parsed) {
+                return { type: "text", text: String(parsed[fieldName]) };
+              }
+            } catch { /* not JSON */ }
+          }
+          return c;
+        });
+        return successResult(extracted);
       }
 
       return successResult(result.content);
