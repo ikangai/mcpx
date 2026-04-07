@@ -30,13 +30,12 @@ export function saveServers(config: ServersFile): void {
   writeFileSync(getServersPath(), JSON.stringify(config, null, 2) + "\n");
 }
 
-export function addServer(alias: string, command: string): void {
+export function addServer(alias: string, command: string, env?: Record<string, string>): void {
   const config = loadServers();
   const parts = command.split(/\s+/);
-  config.mcpServers[alias] = {
-    command: parts[0],
-    args: parts.slice(1),
-  };
+  const server: ServerConfig = { command: parts[0], args: parts.slice(1) };
+  if (env && Object.keys(env).length > 0) server.env = env;
+  config.mcpServers[alias] = server;
   saveServers(config);
 }
 

@@ -279,9 +279,9 @@ export async function getToolSchema(
   }
 }
 
-export async function runAdd(alias: string, command: string): Promise<Envelope> {
+export async function runAdd(alias: string, command: string, env?: Record<string, string>): Promise<Envelope> {
   try {
-    addServer(alias, command);
+    addServer(alias, command, env);
     return { ok: true } as Envelope;
   } catch (err) {
     return errorEnvelope(EXIT.CONFIG_ERROR, (err as Error).message);
