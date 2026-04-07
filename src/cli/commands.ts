@@ -5,6 +5,7 @@ import { addToolFlags, parseToolArgs } from "./flags.js";
 import type { JsonSchema } from "../utils/schema.js";
 import { readFileSync } from "node:fs";
 import { addServer, getServer, getAllServers } from "../config/store.js";
+import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import {
   type Envelope,
   successTools,
@@ -16,108 +17,45 @@ import {
   type ToolInfo,
 } from "../output/envelope.js";
 
-async function resolveServerConfig(opts: {
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+class ConfigError extends Error {}
+
+function resolveServer(opts: {
   server?: string;
   config?: string;
   serverName?: string;
-}): Promise<ServerConfig> {
-  if (opts.server) {
-    return parseServerSpec(opts.server);
-  }
-  if (opts.config) {
-    const raw = readFileSync(opts.config, "utf-8");
-    const config = JSON.parse(raw);
-    return parseConfigFile(config, opts.serverName);
-  }
-  throw new Error("Specify --server (-s) or --config (-c)");
-}
-
-export async function runList(globalOpts: {
-  server?: string;
-  config?: string;
-  serverName?: string;
-}): Promise<Envelope> {
-  let serverConfig;
-  try {
-    serverConfig = await resolveServerConfig(globalOpts);
-  } catch (err) {
-    return errorEnvelope(EXIT.CONFIG_ERROR, (err as Error).message);
-  }
-
-  const client = new McpClient();
-  try {
-    await client.connect(serverConfig);
-    const tools = await client.listTools();
-    const toolInfos: ToolInfo[] = tools.map((t) => ({
-      name: t.name,
-      description: t.description,
-      inputSchema: t.inputSchema as Record<string, unknown>,
-    }));
-    return successTools(toolInfos);
-  } catch (err) {
-    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
-  } finally {
-    await client.close();
-  }
-}
-
-export async function runExec(
-  toolName: string,
-  toolArgs: string[],
-  globalOpts: {
-    server?: string;
-    config?: string;
-    serverName?: string;
-  }
-): Promise<Envelope> {
-  let serverConfig;
-  try {
-    serverConfig = await resolveServerConfig(globalOpts);
-  } catch (err) {
-    return errorEnvelope(EXIT.CONFIG_ERROR, (err as Error).message);
-  }
-
-  const client = new McpClient();
-  try {
-    await client.connect(serverConfig);
-    const tools = await client.listTools();
-    const tool = tools.find((t) => t.name === toolName);
-
-    if (!tool) {
-      const available = tools.map((t) => t.name).join(", ");
-      return errorEnvelope(
-        EXIT.VALIDATION_ERROR,
-        `Tool "${toolName}" not found. Available: ${available}`
+  serverAlias?: string;
+}): ServerConfig {
+  if (opts.serverAlias) {
+    const config = getServer(opts.serverAlias);
+    if (!config) {
+      const available = Object.keys(getAllServers()).join(", ");
+      throw new ConfigError(
+        `Server "${opts.serverAlias}" not found. Available: ${available || "(none)"}`
       );
     }
+    return config;
+  }
+  if (opts.server) return parseServerSpec(opts.server);
+  if (opts.config) {
+    const raw = readFileSync(opts.config, "utf-8");
+    return parseConfigFile(JSON.parse(raw), opts.serverName);
+  }
+  throw new ConfigError("Specify a server: /alias, --server, or --config");
+}
 
-    const tmpCmd = new Command(toolName);
-    tmpCmd.exitOverride();
-    addToolFlags(tmpCmd, tool.inputSchema as JsonSchema);
-
-    try {
-      tmpCmd.parse(toolArgs, { from: "user" });
-    } catch (err) {
-      return errorEnvelope(EXIT.VALIDATION_ERROR, (err as Error).message);
-    }
-
-    const args = parseToolArgs(tmpCmd.opts(), tool.inputSchema as JsonSchema);
-    const result = await client.callTool(toolName, args) as {
-      content: Array<ContentItem>;
-      isError?: boolean;
-    };
-
-    if (result.isError) {
-      const msg = result.content
-        .filter((c) => c.type === "text")
-        .map((c) => c.text)
-        .join("\n");
-      return errorEnvelope(EXIT.TOOL_ERROR, msg || "Tool returned an error");
-    }
-
-    return successResult(result.content);
-  } catch (err) {
-    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+async function withServer<T>(
+  config: ServerConfig,
+  fn: (client: McpClient, tools: Tool[]) => Promise<T>
+): Promise<T> {
+  const client = new McpClient();
+  try {
+    await client.connect(config);
+    const tools = await client.listTools();
+    return await fn(client, tools);
   } finally {
     await client.close();
   }
@@ -138,177 +76,206 @@ function extractParams(args: string[]): string | null {
   return null;
 }
 
-export async function runSlashExec(
-  serverAlias: string,
+type ServerOpts = {
+  server?: string;
+  config?: string;
+  serverName?: string;
+  serverAlias?: string;
+};
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+export async function invokeTool(
   toolName: string,
-  toolArgs: string[]
+  toolArgs: string[],
+  opts: ServerOpts
 ): Promise<Envelope> {
-  const serverConfig = getServer(serverAlias);
-  if (!serverConfig) {
-    const available = Object.keys(getAllServers()).join(", ");
-    return errorEnvelope(
-      EXIT.CONFIG_ERROR,
-      `Server "${serverAlias}" not found. Available: ${available || "(none)"}`
-    );
+  let serverConfig: ServerConfig;
+  try {
+    serverConfig = resolveServer(opts);
+  } catch (err) {
+    if (err instanceof ConfigError) {
+      return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
+    }
+    return errorEnvelope(EXIT.INTERNAL_ERROR, (err as Error).message);
   }
 
-  const client = new McpClient();
+  const serverLabel = opts.serverAlias ?? "server";
+
   try {
-    await client.connect(serverConfig);
-    const tools = await client.listTools();
-    const tool = tools.find((t) => t.name === toolName);
-
-    if (!tool) {
-      const available = tools.map((t) => t.name).join(", ");
-      return errorEnvelope(
-        EXIT.VALIDATION_ERROR,
-        `Tool "${toolName}" not found on server "${serverAlias}". Available: ${available}`
-      );
-    }
-
-    // Parse --params / --json if present, otherwise fall back to per-field flags
-    const params = extractParams(toolArgs);
-    let args: Record<string, unknown>;
-
-    if (params !== null) {
-      try {
-        args = JSON.parse(params);
-      } catch {
-        return errorEnvelope(EXIT.VALIDATION_ERROR, "Invalid JSON in --params/--json");
+    return await withServer(serverConfig, async (client, tools) => {
+      const tool = tools.find((t) => t.name === toolName);
+      if (!tool) {
+        const available = tools.map((t) => t.name).join(", ");
+        return errorEnvelope(
+          EXIT.VALIDATION_ERROR,
+          `Tool "${toolName}" not found on ${serverLabel}. Available: ${available}`
+        );
       }
-    } else {
-      // Filter out --dry-run from tool args before passing to commander
-      const filteredArgs = toolArgs.filter((a) => a !== "--dry-run");
-      const tmpCmd = new Command(toolName);
-      tmpCmd.exitOverride();
-      addToolFlags(tmpCmd, tool.inputSchema as JsonSchema);
-      try {
-        tmpCmd.parse(filteredArgs, { from: "user" });
-      } catch (err) {
-        return errorEnvelope(EXIT.VALIDATION_ERROR, (err as Error).message);
+
+      // Parse args: --params/--json takes precedence, then per-field flags
+      const params = extractParams(toolArgs);
+      let args: Record<string, unknown>;
+
+      if (params !== null) {
+        try {
+          args = JSON.parse(params);
+        } catch {
+          return errorEnvelope(EXIT.VALIDATION_ERROR, "Invalid JSON in --params/--json");
+        }
+      } else {
+        const filteredArgs = toolArgs.filter(
+          (a) => a !== "--dry-run" && a !== "--help"
+        );
+        const tmpCmd = new Command(toolName);
+        tmpCmd.exitOverride();
+        addToolFlags(tmpCmd, tool.inputSchema as JsonSchema);
+        try {
+          tmpCmd.parse(filteredArgs, { from: "user" });
+        } catch (err) {
+          return errorEnvelope(EXIT.VALIDATION_ERROR, (err as Error).message);
+        }
+        args = parseToolArgs(tmpCmd.opts(), tool.inputSchema as JsonSchema);
       }
-      args = parseToolArgs(tmpCmd.opts(), tool.inputSchema as JsonSchema);
-    }
 
-    // Check for --dry-run
-    if (toolArgs.includes("--dry-run")) {
-      return successResult([{
-        type: "text",
-        text: JSON.stringify({
-          dryRun: true,
-          server: serverAlias,
-          tool: toolName,
-          arguments: args,
-        }, null, 2),
-      }]);
-    }
+      // --help: show schema as usage
+      if (toolArgs.includes("--help")) {
+        return successSchema({
+          ...tool.inputSchema,
+          description: tool.description,
+        } as Record<string, unknown>);
+      }
 
-    const result = await client.callTool(toolName, args) as {
-      content: Array<ContentItem>;
-      isError?: boolean;
-    };
+      // --dry-run: preview without executing
+      if (toolArgs.includes("--dry-run")) {
+        return successResult([
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                dryRun: true,
+                server: serverLabel,
+                tool: toolName,
+                arguments: args,
+              },
+              null,
+              2
+            ),
+          },
+        ]);
+      }
 
-    if (result.isError) {
-      const msg = result.content
-        .filter((c) => c.type === "text")
-        .map((c) => c.text)
-        .join("\n");
-      return errorEnvelope(EXIT.TOOL_ERROR, msg || "Tool returned an error");
-    }
+      const result = (await client.callTool(toolName, args)) as {
+        content: Array<ContentItem>;
+        isError?: boolean;
+      };
 
-    return successResult(result.content);
+      if (result.isError) {
+        const msg = result.content
+          .filter((c) => c.type === "text")
+          .map((c) => c.text)
+          .join("\n");
+        return errorEnvelope(EXIT.TOOL_ERROR, msg || "Tool returned an error");
+      }
+
+      return successResult(result.content);
+    });
   } catch (err) {
     return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
-  } finally {
-    await client.close();
   }
 }
 
-export async function runSlashList(serverAlias?: string): Promise<Envelope> {
-  if (serverAlias) {
-    const serverConfig = getServer(serverAlias);
-    if (!serverConfig) {
-      return errorEnvelope(
-        EXIT.CONFIG_ERROR,
-        `Server "${serverAlias}" not found.`
-      );
-    }
-    const client = new McpClient();
-    try {
-      await client.connect(serverConfig);
-      const tools = await client.listTools();
-      return successTools(tools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        inputSchema: t.inputSchema as Record<string, unknown>,
-      })));
-    } catch (err) {
-      return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
-    } finally {
-      await client.close();
-    }
+export async function listTools(opts: ServerOpts): Promise<Envelope> {
+  // If no server specified, list tools from all configured servers
+  if (!opts.server && !opts.config && !opts.serverAlias) {
+    return listAllServers();
   }
 
-  // List all servers — connect to each and aggregate
+  let serverConfig: ServerConfig;
+  try {
+    serverConfig = resolveServer(opts);
+  } catch (err) {
+    if (err instanceof ConfigError) {
+      return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
+    }
+    return errorEnvelope(EXIT.INTERNAL_ERROR, (err as Error).message);
+  }
+
+  try {
+    return await withServer(serverConfig, async (_client, tools) => {
+      return successTools(
+        tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          inputSchema: t.inputSchema as Record<string, unknown>,
+          server: opts.serverAlias,
+        }))
+      );
+    });
+  } catch (err) {
+    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+  }
+}
+
+async function listAllServers(): Promise<Envelope> {
   const servers = getAllServers();
-  const names = Object.keys(servers);
-  if (names.length === 0) {
+  if (Object.keys(servers).length === 0) {
     return successTools([]);
   }
 
   const allTools: ToolInfo[] = [];
-  for (const [, config] of Object.entries(servers)) {
-    const client = new McpClient();
+  for (const [alias, config] of Object.entries(servers)) {
     try {
-      await client.connect(config);
-      const tools = await client.listTools();
-      allTools.push(...tools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        inputSchema: t.inputSchema as Record<string, unknown>,
-      })));
+      await withServer(config, async (_client, tools) => {
+        allTools.push(
+          ...tools.map((t) => ({
+            name: t.name,
+            description: t.description,
+            inputSchema: t.inputSchema as Record<string, unknown>,
+            server: alias,
+          }))
+        );
+      });
     } catch {
       // Skip unreachable servers
-    } finally {
-      await client.close();
     }
   }
   return successTools(allTools);
 }
 
-export async function runSchema(
-  serverAlias: string,
-  toolName: string
+export async function getToolSchema(
+  toolName: string,
+  opts: ServerOpts
 ): Promise<Envelope> {
-  const serverConfig = getServer(serverAlias);
-  if (!serverConfig) {
-    return errorEnvelope(EXIT.CONFIG_ERROR, `Server "${serverAlias}" not found.`);
+  let serverConfig: ServerConfig;
+  try {
+    serverConfig = resolveServer(opts);
+  } catch (err) {
+    if (err instanceof ConfigError) {
+      return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
+    }
+    return errorEnvelope(EXIT.INTERNAL_ERROR, (err as Error).message);
   }
 
-  const client = new McpClient();
   try {
-    await client.connect(serverConfig);
-    const tools = await client.listTools();
-    const tool = tools.find((t) => t.name === toolName);
-
-    if (!tool) {
-      const available = tools.map((t) => t.name).join(", ");
-      return errorEnvelope(
-        EXIT.VALIDATION_ERROR,
-        `Tool "${toolName}" not found. Available: ${available}`
-      );
-    }
-
-    const schema = {
-      ...tool.inputSchema,
-      description: tool.description,
-    };
-
-    return successSchema(schema as Record<string, unknown>);
+    return await withServer(serverConfig, async (_client, tools) => {
+      const tool = tools.find((t) => t.name === toolName);
+      if (!tool) {
+        const available = tools.map((t) => t.name).join(", ");
+        return errorEnvelope(
+          EXIT.VALIDATION_ERROR,
+          `Tool "${toolName}" not found. Available: ${available}`
+        );
+      }
+      return successSchema({
+        ...tool.inputSchema,
+        description: tool.description,
+      } as Record<string, unknown>);
+    });
   } catch (err) {
     return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
-  } finally {
-    await client.close();
   }
 }
 

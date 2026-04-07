@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { runList, runExec, runAdd, runSlashExec, runSlashList, runSchema } from "./cli/commands.js";
+import { invokeTool, listTools, runAdd, getToolSchema } from "./cli/commands.js";
 import { parseSlashCommand, parsePShorthand } from "./cli/router.js";
 import { runInteractive } from "./interactive/repl.js";
 import { output, errorEnvelope, EXIT, type Envelope } from "./output/envelope.js";
@@ -22,11 +22,11 @@ program
   .action(async (server?: string) => {
     let envelope: Envelope;
     if (server?.startsWith("/")) {
-      envelope = await runSlashList(server.slice(1));
+      envelope = await listTools({ serverAlias: server.slice(1) });
     } else if (program.opts().server || program.opts().config) {
-      envelope = await runList(program.opts());
+      envelope = await listTools(program.opts());
     } else {
-      envelope = await runSlashList();
+      envelope = await listTools({});
     }
     output(envelope);
   });
@@ -38,7 +38,7 @@ program
   .allowExcessArguments()
   .action(async (toolName: string, _opts: unknown, cmd: Command) => {
     const toolArgs = cmd.args.filter((a) => a !== toolName);
-    const envelope = await runExec(toolName, toolArgs, program.opts());
+    const envelope = await invokeTool(toolName, toolArgs, program.opts());
     output(envelope);
   });
 
@@ -55,7 +55,7 @@ program
   .description("Show full input schema for a tool")
   .action(async (server: string, tool: string) => {
     const alias = server.startsWith("/") ? server.slice(1) : server;
-    const envelope = await runSchema(alias, tool);
+    const envelope = await getToolSchema(tool, { serverAlias: alias });
     output(envelope);
   });
 
@@ -72,7 +72,7 @@ const pIdx = process.argv.indexOf("-p");
 if (pIdx !== -1 && pIdx + 1 < process.argv.length) {
   const pSlash = parsePShorthand(process.argv[pIdx + 1]);
   if (pSlash) {
-    runSlashExec(pSlash.serverAlias, pSlash.toolName, pSlash.toolArgs)
+    invokeTool(pSlash.toolName, pSlash.toolArgs, { serverAlias: pSlash.serverAlias })
       .then((envelope) => output(envelope))
       .catch((err) => output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message)));
   } else {
@@ -82,7 +82,7 @@ if (pIdx !== -1 && pIdx + 1 < process.argv.length) {
   // Check for slash-command pattern
   const slash = parseSlashCommand(process.argv);
   if (slash) {
-    runSlashExec(slash.serverAlias, slash.toolName, slash.toolArgs)
+    invokeTool(slash.toolName, slash.toolArgs, { serverAlias: slash.serverAlias })
       .then((envelope) => output(envelope))
       .catch((err) => output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message)));
   } else {
