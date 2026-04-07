@@ -6,7 +6,8 @@ import type { JsonSchema } from "../utils/schema.js";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { addServer, removeServer, updateServer, getServer, getAllServers, importServers, addAlias, removeAlias, getAlias, getAllAliases } from "../config/store.js";
+import { addServer, removeServer, updateServer, getServer, getAllServers, importServers, addAlias, removeAlias, getAlias, getAllAliases, saveSnapshot, loadSnapshot } from "../config/store.js";
+import { diffToolSchemas, formatDiff } from "./diff.js";
 import { generateSkill } from "../skills/generator.js";
 import { DaemonClient } from "../daemon/client.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
@@ -669,6 +670,50 @@ export async function runAliasExec(name: string, extraArgs: string[], opts: Serv
   }
   const mergedArgs = [...parsed.toolArgs, ...extraArgs];
   return invokeTool(parsed.toolName, mergedArgs, { ...opts, serverAlias: parsed.serverAlias });
+}
+
+// ---------------------------------------------------------------------------
+// Schema Diff
+// ---------------------------------------------------------------------------
+
+export async function runDiff(serverAlias: string, opts: ServerOpts): Promise<Envelope> {
+  let serverConfig: ServerConfig;
+  try { serverConfig = resolveServer({ serverAlias }); }
+  catch (err) {
+    if (err instanceof ConfigError) return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
+    return errorEnvelope(EXIT.INTERNAL_ERROR, (err as Error).message);
+  }
+
+  const client = new McpClient();
+  try {
+    await client.connect(serverConfig, { verbose: opts?.verbose, timeout: opts?.timeout });
+    const currentTools = await client.listTools();
+    const current = currentTools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema as Record<string, unknown>,
+    }));
+
+    const previous = loadSnapshot(serverAlias);
+
+    // Save current as new snapshot
+    saveSnapshot(serverAlias, current);
+
+    if (!previous) {
+      return successResult([{
+        type: "text",
+        text: `Snapshot saved for ${serverAlias} (${current.length} tools). No previous snapshot to compare.`,
+      }]);
+    }
+
+    const diff = diffToolSchemas(previous, current);
+    const text = formatDiff(diff);
+    return successResult([{ type: "text", text }]);
+  } catch (err) {
+    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+  } finally {
+    await client.close();
+  }
 }
 
 function findClaudeConfig(): string | null {

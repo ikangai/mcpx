@@ -22,7 +22,7 @@ if (configDirIdx !== -1 && configDirIdx + 1 < process.argv.length) {
 })();
 
 import { Command } from "commander";
-import { invokeTool, listTools, runAdd, runUpdate, runServers, runRemove, getToolSchema, runImport, runSkills, runInspect, runListPrompts, runGetPrompt, runAlias, runAliasExec, runListResources, runReadResource } from "./cli/commands.js";
+import { invokeTool, listTools, runAdd, runUpdate, runServers, runRemove, getToolSchema, runImport, runSkills, runInspect, runListPrompts, runGetPrompt, runAlias, runAliasExec, runListResources, runReadResource, runDiff } from "./cli/commands.js";
 import { parseSlashCommand, parsePShorthand, GLOBAL_VALUE_FLAGS } from "./cli/router.js";
 import { runInteractive } from "./interactive/repl.js";
 import { output, errorEnvelope, successResult, EXIT, type Envelope } from "./output/envelope.js";
@@ -273,6 +273,15 @@ program
   .action(async (name: string, _opts: unknown, cmd: Command) => {
     const extraArgs = cmd.args.filter((a) => a !== name);
     const envelope = await runAliasExec(name, extraArgs, getOpts());
+    emitOutput(envelope);
+  });
+
+program
+  .command("diff <server>")
+  .description("Compare tool schemas against last snapshot")
+  .action(async (server: string) => {
+    const alias = server.startsWith("/") ? server.slice(1) : server;
+    const envelope = await runDiff(alias, getOpts());
     emitOutput(envelope);
   });
 

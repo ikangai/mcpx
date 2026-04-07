@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import type { ServerConfig } from "../mcp/config.js";
+import type { ToolInfo } from "../output/envelope.js";
 
 function getConfigDir(): string {
   return process.env.MCPX_CONFIG_DIR ?? join(homedir(), ".config", "mcpx");
@@ -131,4 +132,24 @@ export function getAlias(name: string): string | undefined {
 
 export function getAllAliases(): Record<string, string> {
   return loadServers().aliases ?? {};
+}
+
+// ---------------------------------------------------------------------------
+// Snapshots (for schema diff)
+// ---------------------------------------------------------------------------
+
+export function saveSnapshot(alias: string, tools: ToolInfo[]): void {
+  const dir = getConfigDir();
+  mkdirSync(join(dir, "snapshots"), { recursive: true });
+  writeFileSync(join(dir, "snapshots", `${alias}.json`), JSON.stringify(tools, null, 2));
+}
+
+export function loadSnapshot(alias: string): ToolInfo[] | null {
+  const path = join(getConfigDir(), "snapshots", `${alias}.json`);
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, "utf-8"));
+  } catch {
+    return null;
+  }
 }
