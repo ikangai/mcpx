@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import { runList, runExec } from "./cli/commands.js";
 import { runInteractive } from "./interactive/repl.js";
+import { output, errorEnvelope, EXIT } from "./output/envelope.js";
 
 const program = new Command();
 
@@ -12,25 +13,25 @@ program
   .option("-s, --server <command>", "MCP server command (inline)")
   .option("-c, --config <file>", "Path to config file")
   .option("-n, --server-name <name>", "Server name from config")
-  .option("-f, --format <format>", "Output format: json | table | yaml", "auto")
-  .option("--raw", "Output raw MCP response")
   .option("-v, --verbose", "Show debug info");
 
 program
   .command("list")
   .description("List available tools from the MCP server")
   .action(async () => {
-    await runList(program.opts());
+    const envelope = await runList(program.opts());
+    output(envelope);
   });
 
 program
   .command("exec <tool>")
   .description("Execute an MCP tool")
   .allowUnknownOption()
+  .allowExcessArguments()
   .action(async (toolName: string, _opts: unknown, cmd: Command) => {
-    // Everything after 'exec <tool>' goes to the tool flag parser
-    const toolArgs = cmd.args.slice(0);
-    await runExec(toolName, toolArgs, program.opts());
+    const toolArgs = cmd.args.filter((a) => a !== toolName);
+    const envelope = await runExec(toolName, toolArgs, program.opts());
+    output(envelope);
   });
 
 program
@@ -42,6 +43,5 @@ program
   });
 
 program.parseAsync().catch((err) => {
-  console.error(err.message);
-  process.exit(1);
+  output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message));
 });
