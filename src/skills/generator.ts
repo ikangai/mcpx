@@ -35,10 +35,26 @@ export function generateSkill(alias: string, tools: Tool[]): string {
     const schema = tool.inputSchema as JsonSchemaObj;
     const props = schema.properties ?? {};
     const required = new Set(schema.required ?? []);
+    const annotations = (tool as any).annotations as {
+      readOnlyHint?: boolean;
+      destructiveHint?: boolean;
+      idempotentHint?: boolean;
+      openWorldHint?: boolean;
+    } | undefined;
 
     lines.push(`### ${tool.name}`);
     lines.push("");
     if (tool.description) lines.push(tool.description);
+
+    if (annotations) {
+      const hints: string[] = [];
+      if (annotations.destructiveHint) hints.push("destructive");
+      if (annotations.readOnlyHint) hints.push("read-only");
+      if (annotations.idempotentHint) hints.push("idempotent");
+      if (annotations.openWorldHint) hints.push("open-world");
+      if (hints.length > 0) lines.push(`> Hints: ${hints.join(", ")}`);
+    }
+
     lines.push("");
 
     // Build example params

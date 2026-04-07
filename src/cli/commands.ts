@@ -219,6 +219,24 @@ export async function invokeTool(
         lines.push("  --params-stdin      Read arguments as JSON from stdin");
         lines.push("  --field <name>      Extract a field from JSON result");
         lines.push("  --dry-run           Preview without executing");
+
+        // Show tool annotations if present
+        const annotations = (tool as any).annotations as {
+          title?: string;
+          readOnlyHint?: boolean;
+          destructiveHint?: boolean;
+          idempotentHint?: boolean;
+          openWorldHint?: boolean;
+        } | undefined;
+        if (annotations) {
+          const hints: string[] = [];
+          if (annotations.destructiveHint) hints.push("destructive");
+          if (annotations.readOnlyHint) hints.push("read-only");
+          if (annotations.idempotentHint) hints.push("idempotent");
+          if (annotations.openWorldHint) hints.push("open-world");
+          if (hints.length > 0) lines.push("", `Hints: ${hints.join(", ")}`);
+        }
+
         return successResult([{ type: "text", text: lines.join("\n") }]);
       }
 
@@ -316,6 +334,7 @@ export async function listTools(opts: ServerOpts): Promise<Envelope> {
           description: t.description,
           inputSchema: t.inputSchema as Record<string, unknown>,
           server: opts.serverAlias,
+          annotations: (t as any).annotations,
         }))
       );
     }, { verbose: opts?.verbose, timeout: opts?.timeout, serverAlias: opts?.serverAlias });
@@ -339,6 +358,7 @@ async function listAllServers(opts?: ServerOpts): Promise<Envelope> {
           description: t.description,
           inputSchema: t.inputSchema as Record<string, unknown>,
           server: alias,
+          annotations: (t as any).annotations,
         }));
       }, { verbose: opts?.verbose, timeout: opts?.timeout, serverAlias: alias });
     })

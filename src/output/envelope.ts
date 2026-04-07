@@ -32,6 +32,7 @@ export interface ToolInfo {
   description?: string;
   inputSchema: Record<string, unknown>;
   server?: string;
+  annotations?: Record<string, unknown>;
 }
 
 /** Exit codes matching gws convention */
