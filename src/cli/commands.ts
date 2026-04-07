@@ -3,8 +3,10 @@ import { McpClient } from "../mcp/client.js";
 import { parseServerSpec, parseConfigFile, type ServerConfig } from "../mcp/config.js";
 import { addToolFlags, parseToolArgs } from "./flags.js";
 import type { JsonSchema } from "../utils/schema.js";
-import { readFileSync } from "node:fs";
-import { addServer, removeServer, getServer, getAllServers } from "../config/store.js";
+import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
+import { addServer, removeServer, getServer, getAllServers, importServers } from "../config/store.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import {
   type Envelope,
@@ -320,4 +322,28 @@ export async function runRemove(alias: string): Promise<Envelope> {
     return errorEnvelope(EXIT.CONFIG_ERROR, `Server "${alias}" not found.`);
   }
   return { ok: true } as Envelope;
+}
+
+export async function runImport(configPath?: string): Promise<Envelope> {
+  const path = configPath ?? findClaudeConfig();
+  if (!path) {
+    return errorEnvelope(EXIT.CONFIG_ERROR, "No config file found. Provide a path or install Claude Desktop.");
+  }
+  try {
+    const imported = importServers(path);
+    return successResult([{
+      type: "text",
+      text: `Imported ${imported.length} server(s): ${imported.join(", ") || "(none new)"}`,
+    }]);
+  } catch (err) {
+    return errorEnvelope(EXIT.CONFIG_ERROR, (err as Error).message);
+  }
+}
+
+function findClaudeConfig(): string | null {
+  const candidates = [
+    join(homedir(), "Library", "Application Support", "Claude", "claude_desktop_config.json"),
+    join(homedir(), ".config", "claude", "claude_desktop_config.json"),
+  ];
+  return candidates.find((p) => existsSync(p)) ?? null;
 }

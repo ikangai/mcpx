@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { invokeTool, listTools, runAdd, runServers, runRemove, getToolSchema } from "./cli/commands.js";
+import { invokeTool, listTools, runAdd, runServers, runRemove, getToolSchema, runImport } from "./cli/commands.js";
 import { parseSlashCommand, parsePShorthand } from "./cli/router.js";
 import { runInteractive } from "./interactive/repl.js";
 import { output, errorEnvelope, EXIT, type Envelope } from "./output/envelope.js";
@@ -78,6 +78,14 @@ program
   .description("Remove a registered server")
   .action(async (alias: string) => {
     const envelope = await runRemove(alias);
+    output(envelope);
+  });
+
+program
+  .command("import [config-path]")
+  .description("Import servers from Claude Desktop config")
+  .action(async (configPath?: string) => {
+    const envelope = await runImport(configPath);
     output(envelope);
   });
 

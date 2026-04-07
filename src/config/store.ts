@@ -48,6 +48,21 @@ export function getAllServers(): Record<string, ServerConfig> {
   return loadServers().mcpServers;
 }
 
+export function importServers(configPath: string): string[] {
+  const raw = readFileSync(configPath, "utf-8");
+  const external = JSON.parse(raw) as ServersFile;
+  const current = loadServers();
+  const imported: string[] = [];
+  for (const [alias, config] of Object.entries(external.mcpServers ?? {})) {
+    if (!(alias in current.mcpServers)) {
+      current.mcpServers[alias] = config;
+      imported.push(alias);
+    }
+  }
+  saveServers(current);
+  return imported;
+}
+
 export function removeServer(alias: string): boolean {
   const config = loadServers();
   if (!(alias in config.mcpServers)) return false;
