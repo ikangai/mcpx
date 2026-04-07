@@ -82,7 +82,6 @@ export async function runInteractive(globalOpts: {
   server?: string;
   config?: string;
   serverName?: string;
-  format?: string;
 }, serverAlias?: string): Promise<void> {
   const serverConfig = resolveServerConfig(globalOpts, serverAlias);
   const client = new McpClient();
@@ -124,7 +123,7 @@ export async function runInteractive(globalOpts: {
         content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
         isError?: boolean;
       };
-      const format = detectFormat(globalOpts.format);
+      const format = detectFormat();
 
       console.log("\n" + formatResult(result, format) + "\n");
 
