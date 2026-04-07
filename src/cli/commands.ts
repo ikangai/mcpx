@@ -4,6 +4,7 @@ import { parseServerSpec, parseConfigFile, type ServerConfig } from "../mcp/conf
 import { addToolFlags, parseToolArgs } from "./flags.js";
 import type { JsonSchema } from "../utils/schema.js";
 import { readFileSync } from "node:fs";
+import { addServer } from "../config/store.js";
 import {
   type Envelope,
   successTools,
@@ -118,5 +119,14 @@ export async function runExec(
     return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
   } finally {
     await client.close();
+  }
+}
+
+export async function runAdd(alias: string, command: string): Promise<Envelope> {
+  try {
+    addServer(alias, command);
+    return { ok: true } as Envelope;
+  } catch (err) {
+    return errorEnvelope(EXIT.CONFIG_ERROR, (err as Error).message);
   }
 }

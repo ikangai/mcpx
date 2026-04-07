@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { runList, runExec } from "./cli/commands.js";
+import { runList, runExec, runAdd } from "./cli/commands.js";
 import { runInteractive } from "./interactive/repl.js";
 import { output, errorEnvelope, EXIT } from "./output/envelope.js";
 
@@ -31,6 +31,14 @@ program
   .action(async (toolName: string, _opts: unknown, cmd: Command) => {
     const toolArgs = cmd.args.filter((a) => a !== toolName);
     const envelope = await runExec(toolName, toolArgs, program.opts());
+    output(envelope);
+  });
+
+program
+  .command("add <alias> <command>")
+  .description("Register an MCP server with a short alias")
+  .action(async (alias: string, command: string) => {
+    const envelope = await runAdd(alias, command);
     output(envelope);
   });
 
