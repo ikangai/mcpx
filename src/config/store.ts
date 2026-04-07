@@ -20,8 +20,12 @@ export function loadServers(): ServersFile {
   if (!existsSync(path)) {
     return { mcpServers: {} };
   }
-  const raw = readFileSync(path, "utf-8");
-  return JSON.parse(raw) as ServersFile;
+  try {
+    const raw = readFileSync(path, "utf-8");
+    return JSON.parse(raw) as ServersFile;
+  } catch {
+    return { mcpServers: {} };
+  }
 }
 
 export function saveServers(config: ServersFile): void {
