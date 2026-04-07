@@ -53,11 +53,11 @@ function resolveServer(opts: {
 async function withServer<T>(
   config: ServerConfig,
   fn: (client: McpClient, tools: Tool[]) => Promise<T>,
-  opts?: { verbose?: boolean }
+  opts?: { verbose?: boolean; timeout?: number }
 ): Promise<T> {
   const client = new McpClient();
   try {
-    await client.connect(config, { verbose: opts?.verbose });
+    await client.connect(config, { verbose: opts?.verbose, timeout: opts?.timeout });
     const tools = await client.listTools();
     return await fn(client, tools);
   } finally {
@@ -86,6 +86,7 @@ type ServerOpts = {
   serverName?: string;
   serverAlias?: string;
   verbose?: boolean;
+  timeout?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -214,7 +215,7 @@ export async function invokeTool(
       }
 
       return successResult(result.content);
-    }, { verbose: opts?.verbose });
+    }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined });
   } catch (err) {
     return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
   }
@@ -223,7 +224,7 @@ export async function invokeTool(
 export async function listTools(opts: ServerOpts): Promise<Envelope> {
   // If no server specified, list tools from all configured servers
   if (!opts.server && !opts.config && !opts.serverAlias) {
-    return listAllServers();
+    return listAllServers(opts);
   }
 
   let serverConfig: ServerConfig;
@@ -246,13 +247,13 @@ export async function listTools(opts: ServerOpts): Promise<Envelope> {
           server: opts.serverAlias,
         }))
       );
-    }, { verbose: opts?.verbose });
+    }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined });
   } catch (err) {
     return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
   }
 }
 
-async function listAllServers(): Promise<Envelope> {
+async function listAllServers(opts?: ServerOpts): Promise<Envelope> {
   const servers = getAllServers();
   if (Object.keys(servers).length === 0) {
     return successTools([]);
@@ -270,7 +271,7 @@ async function listAllServers(): Promise<Envelope> {
             server: alias,
           }))
         );
-      });
+      }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined });
     } catch {
       // Skip unreachable servers
     }
@@ -306,7 +307,7 @@ export async function getToolSchema(
         ...tool.inputSchema,
         description: tool.description,
       } as Record<string, unknown>);
-    }, { verbose: opts?.verbose });
+    }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined });
   } catch (err) {
     return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
   }

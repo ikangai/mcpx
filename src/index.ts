@@ -14,7 +14,8 @@ program
   .option("-s, --server <command>", "MCP server command (inline)")
   .option("-c, --config <file>", "Path to config file")
   .option("-n, --server-name <name>", "Server name from config")
-  .option("-v, --verbose", "Show debug info");
+  .option("-v, --verbose", "Show debug info")
+  .option("-t, --timeout <ms>", "Connection timeout in milliseconds", "30000");
 
 program
   .command("list [server]")
