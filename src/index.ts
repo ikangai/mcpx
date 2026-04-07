@@ -82,11 +82,12 @@ program
   });
 
 program
-  .command("interactive")
+  .command("interactive [server]")
   .alias("i")
   .description("Start interactive REPL mode")
-  .action(async () => {
-    await runInteractive(program.opts());
+  .action(async (server?: string) => {
+    const alias = server?.startsWith("/") ? server.slice(1) : server;
+    await runInteractive(program.opts(), alias);
   });
 
 // Check for -p shorthand

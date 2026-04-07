@@ -2,21 +2,27 @@ import { search, input, confirm, select, number as numberPrompt } from "@inquire
 import chalk from "chalk";
 import { McpClient } from "../mcp/client.js";
 import { parseServerSpec, parseConfigFile, type ServerConfig } from "../mcp/config.js";
+import { getServer } from "../config/store.js";
 import { formatResult, detectFormat } from "../output/formatter.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { readFileSync } from "node:fs";
 
-async function resolveServerConfig(opts: {
+function resolveServerConfig(opts: {
   server?: string;
   config?: string;
   serverName?: string;
-}): Promise<ServerConfig> {
+}, serverAlias?: string): ServerConfig {
+  if (serverAlias) {
+    const config = getServer(serverAlias);
+    if (!config) throw new Error(`Server "${serverAlias}" not found.`);
+    return config;
+  }
   if (opts.server) return parseServerSpec(opts.server);
   if (opts.config) {
     const raw = readFileSync(opts.config, "utf-8");
     return parseConfigFile(JSON.parse(raw), opts.serverName);
   }
-  throw new Error("Specify --server or --config");
+  throw new Error("Specify --server, --config, or a server alias");
 }
 
 async function promptForArgs(
@@ -77,8 +83,8 @@ export async function runInteractive(globalOpts: {
   config?: string;
   serverName?: string;
   format?: string;
-}): Promise<void> {
-  const serverConfig = await resolveServerConfig(globalOpts);
+}, serverAlias?: string): Promise<void> {
+  const serverConfig = resolveServerConfig(globalOpts, serverAlias);
   const client = new McpClient();
 
   try {
@@ -123,12 +129,16 @@ export async function runInteractive(globalOpts: {
       console.log("\n" + formatResult(result, format) + "\n");
 
       // Show the equivalent CLI command
-      const serverFlag = globalOpts.server
-        ? `-s "${globalOpts.server}"`
-        : `-c "${globalOpts.config}"${globalOpts.serverName ? ` -n ${globalOpts.serverName}` : ""}`;
-      console.log(
-        chalk.dim(`  Run again: mcpx ${serverFlag} exec ${toolName} ${cmdLine.join(" ")}\n`)
-      );
+      let hint: string;
+      if (serverAlias) {
+        hint = `mcpx /${serverAlias} ${toolName} --params '${JSON.stringify(args)}'`;
+      } else {
+        const serverFlag = globalOpts.server
+          ? `-s "${globalOpts.server}"`
+          : `-c "${globalOpts.config}"${globalOpts.serverName ? ` -n ${globalOpts.serverName}` : ""}`;
+        hint = `mcpx ${serverFlag} exec ${toolName} ${cmdLine.join(" ")}`;
+      }
+      console.log(chalk.dim(`  Run again: ${hint}\n`));
     }
   } catch (err) {
     if ((err as Error).name === "ExitPromptError") {
