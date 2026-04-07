@@ -19,7 +19,7 @@ import { Command } from "commander";
 import { invokeTool, listTools, runAdd, runServers, runRemove, getToolSchema, runImport, runSkills } from "./cli/commands.js";
 import { parseSlashCommand, parsePShorthand } from "./cli/router.js";
 import { runInteractive } from "./interactive/repl.js";
-import { output, errorEnvelope, EXIT, type Envelope } from "./output/envelope.js";
+import { output, errorEnvelope, successResult, EXIT, type Envelope } from "./output/envelope.js";
 import { DaemonClient } from "./daemon/client.js";
 
 function extractGlobalOpts(argv: string[]): { verbose?: boolean; timeout?: string } {
@@ -148,7 +148,7 @@ program
         const alive = await daemon.ping();
         daemon.close();
         if (alive) {
-          output({ ok: true, type: "result", content: [{ type: "text", text: "Daemon is already running." }] } as Envelope);
+          output(successResult([{ type: "text", text: "Daemon is already running." }]));
           return;
         }
       }
@@ -156,7 +156,7 @@ program
       const connected = await daemon.tryConnect();
       daemon.close();
       if (connected) {
-        output({ ok: true, type: "result", content: [{ type: "text", text: "Daemon started." }] } as Envelope);
+        output(successResult([{ type: "text", text: "Daemon started." }]));
       } else {
         output(errorEnvelope(EXIT.INTERNAL_ERROR, "Failed to start daemon."));
       }
@@ -164,21 +164,21 @@ program
       if (await daemon.tryConnect()) {
         await daemon.shutdown();
         daemon.close();
-        output({ ok: true, type: "result", content: [{ type: "text", text: "Daemon stopped." }] } as Envelope);
+        output(successResult([{ type: "text", text: "Daemon stopped." }]));
       } else {
-        output({ ok: true, type: "result", content: [{ type: "text", text: "Daemon is not running." }] } as Envelope);
+        output(successResult([{ type: "text", text: "Daemon is not running." }]));
       }
     } else if (action === "status") {
       if (await daemon.tryConnect()) {
         const alive = await daemon.ping();
         daemon.close();
         if (alive) {
-          output({ ok: true, type: "result", content: [{ type: "text", text: "Daemon is running." }] } as Envelope);
+          output(successResult([{ type: "text", text: "Daemon is running." }]));
         } else {
-          output({ ok: true, type: "result", content: [{ type: "text", text: "Daemon is not responding." }] } as Envelope);
+          output(successResult([{ type: "text", text: "Daemon is not responding." }]));
         }
       } else {
-        output({ ok: true, type: "result", content: [{ type: "text", text: "Daemon is not running." }] } as Envelope);
+        output(successResult([{ type: "text", text: "Daemon is not running." }]));
       }
     } else {
       output(errorEnvelope(EXIT.VALIDATION_ERROR, `Unknown daemon action: ${action}. Use start, stop, or status.`));
