@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { runList, runExec, runAdd, runSlashExec } from "./cli/commands.js";
-import { parseSlashCommand } from "./cli/router.js";
+import { runList, runExec, runAdd, runSlashExec, runSlashList, runSchema } from "./cli/commands.js";
+import { parseSlashCommand, parsePShorthand } from "./cli/router.js";
 import { runInteractive } from "./interactive/repl.js";
-import { output, errorEnvelope, EXIT } from "./output/envelope.js";
+import { output, errorEnvelope, EXIT, type Envelope } from "./output/envelope.js";
 
 const program = new Command();
 
@@ -17,10 +17,17 @@ program
   .option("-v, --verbose", "Show debug info");
 
 program
-  .command("list")
-  .description("List available tools from the MCP server")
-  .action(async () => {
-    const envelope = await runList(program.opts());
+  .command("list [server]")
+  .description("List available tools (optionally filter by /server)")
+  .action(async (server?: string) => {
+    let envelope: Envelope;
+    if (server?.startsWith("/")) {
+      envelope = await runSlashList(server.slice(1));
+    } else if (program.opts().server || program.opts().config) {
+      envelope = await runList(program.opts());
+    } else {
+      envelope = await runSlashList();
+    }
     output(envelope);
   });
 
@@ -44,6 +51,15 @@ program
   });
 
 program
+  .command("schema <server> <tool>")
+  .description("Show full input schema for a tool")
+  .action(async (server: string, tool: string) => {
+    const alias = server.startsWith("/") ? server.slice(1) : server;
+    const envelope = await runSchema(alias, tool);
+    output(envelope);
+  });
+
+program
   .command("interactive")
   .alias("i")
   .description("Start interactive REPL mode")
@@ -51,14 +67,27 @@ program
     await runInteractive(program.opts());
   });
 
-// Check for slash-command pattern before commander parses
-const slash = parseSlashCommand(process.argv);
-if (slash) {
-  runSlashExec(slash.serverAlias, slash.toolName, slash.toolArgs)
-    .then((envelope) => output(envelope))
-    .catch((err) => output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message)));
+// Check for -p shorthand
+const pIdx = process.argv.indexOf("-p");
+if (pIdx !== -1 && pIdx + 1 < process.argv.length) {
+  const pSlash = parsePShorthand(process.argv[pIdx + 1]);
+  if (pSlash) {
+    runSlashExec(pSlash.serverAlias, pSlash.toolName, pSlash.toolArgs)
+      .then((envelope) => output(envelope))
+      .catch((err) => output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message)));
+  } else {
+    output(errorEnvelope(EXIT.VALIDATION_ERROR, "Invalid -p format. Expected: /server tool [--params '{}']"));
+  }
 } else {
-  program.parseAsync().catch((err) => {
-    output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message));
-  });
+  // Check for slash-command pattern
+  const slash = parseSlashCommand(process.argv);
+  if (slash) {
+    runSlashExec(slash.serverAlias, slash.toolName, slash.toolArgs)
+      .then((envelope) => output(envelope))
+      .catch((err) => output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message)));
+  } else {
+    program.parseAsync().catch((err) => {
+      output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message));
+    });
+  }
 }

@@ -9,6 +9,7 @@ import {
   type Envelope,
   successTools,
   successResult,
+  successSchema,
   errorEnvelope,
   EXIT,
   type ContentItem,
@@ -216,6 +217,94 @@ export async function runSlashExec(
     }
 
     return successResult(result.content);
+  } catch (err) {
+    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+  } finally {
+    await client.close();
+  }
+}
+
+export async function runSlashList(serverAlias?: string): Promise<Envelope> {
+  if (serverAlias) {
+    const serverConfig = getServer(serverAlias);
+    if (!serverConfig) {
+      return errorEnvelope(
+        EXIT.CONFIG_ERROR,
+        `Server "${serverAlias}" not found.`
+      );
+    }
+    const client = new McpClient();
+    try {
+      await client.connect(serverConfig);
+      const tools = await client.listTools();
+      return successTools(tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema as Record<string, unknown>,
+      })));
+    } catch (err) {
+      return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+    } finally {
+      await client.close();
+    }
+  }
+
+  // List all servers — connect to each and aggregate
+  const servers = getAllServers();
+  const names = Object.keys(servers);
+  if (names.length === 0) {
+    return successTools([]);
+  }
+
+  const allTools: ToolInfo[] = [];
+  for (const [, config] of Object.entries(servers)) {
+    const client = new McpClient();
+    try {
+      await client.connect(config);
+      const tools = await client.listTools();
+      allTools.push(...tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema as Record<string, unknown>,
+      })));
+    } catch {
+      // Skip unreachable servers
+    } finally {
+      await client.close();
+    }
+  }
+  return successTools(allTools);
+}
+
+export async function runSchema(
+  serverAlias: string,
+  toolName: string
+): Promise<Envelope> {
+  const serverConfig = getServer(serverAlias);
+  if (!serverConfig) {
+    return errorEnvelope(EXIT.CONFIG_ERROR, `Server "${serverAlias}" not found.`);
+  }
+
+  const client = new McpClient();
+  try {
+    await client.connect(serverConfig);
+    const tools = await client.listTools();
+    const tool = tools.find((t) => t.name === toolName);
+
+    if (!tool) {
+      const available = tools.map((t) => t.name).join(", ");
+      return errorEnvelope(
+        EXIT.VALIDATION_ERROR,
+        `Tool "${toolName}" not found. Available: ${available}`
+      );
+    }
+
+    const schema = {
+      ...tool.inputSchema,
+      description: tool.description,
+    };
+
+    return successSchema(schema as Record<string, unknown>);
   } catch (err) {
     return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
   } finally {
