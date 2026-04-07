@@ -1,3 +1,4 @@
+import { createServer as createHttpServer } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { McpClient } from "../mcp/client.js";
@@ -10,7 +11,7 @@ interface PoolEntry {
   tools: Tool[];
 }
 
-export async function startGateway(opts?: { verbose?: boolean }): Promise<void> {
+export async function startGateway(opts?: { verbose?: boolean; port?: number }): Promise<void> {
   const server = new McpServer({
     name: "mcpx-gateway",
     version: "0.1.0",
@@ -86,10 +87,6 @@ export async function startGateway(opts?: { verbose?: boolean }): Promise<void> 
   const totalTools = Array.from(pool.values()).reduce((sum, e) => sum + e.tools.length, 0);
   process.stderr.write(`mcpx gateway: ${pool.size} server(s), ${totalTools} tool(s)\n`);
 
-  // Start the MCP server
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-
   // Graceful shutdown
   const cleanup = async () => {
     for (const [, { client }] of pool) {
@@ -99,4 +96,61 @@ export async function startGateway(opts?: { verbose?: boolean }): Promise<void> 
   };
   process.on("SIGTERM", cleanup);
   process.on("SIGINT", cleanup);
+
+  if (opts?.port) {
+    // HTTP mode — simple JSON-RPC endpoint
+    const httpServer = createHttpServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/mcp") {
+        let body = "";
+        for await (const chunk of req) body += chunk;
+
+        try {
+          const request = JSON.parse(body);
+          if (request.method === "tools/list") {
+            const tools: Array<Tool & { name: string }> = [];
+            for (const [alias, entry] of pool) {
+              for (const t of entry.tools) {
+                tools.push({ ...t, name: `${alias}.${t.name}` });
+              }
+            }
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ jsonrpc: "2.0", id: request.id, result: { tools } }));
+          } else if (request.method === "tools/call") {
+            const { name, arguments: args } = request.params;
+            const [alias, ...rest] = name.split(".");
+            const toolName = rest.join(".");
+            const entry = pool.get(alias);
+            if (!entry) {
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ jsonrpc: "2.0", id: request.id, error: { code: -1, message: `Server "${alias}" not found` } }));
+              return;
+            }
+            const result = await entry.client.callTool(toolName, args ?? {});
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ jsonrpc: "2.0", id: request.id, result }));
+          } else {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ jsonrpc: "2.0", id: request.id, error: { code: -32601, message: "Method not found" } }));
+          }
+        } catch (err) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: (err as Error).message }));
+        }
+      } else if (req.method === "GET" && req.url === "/health") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, servers: pool.size, tools: totalTools }));
+      } else {
+        res.writeHead(404);
+        res.end("Not found");
+      }
+    });
+
+    httpServer.listen(opts.port, () => {
+      process.stderr.write(`mcpx gateway: HTTP server on port ${opts.port}\n`);
+    });
+  } else {
+    // Stdio mode (existing)
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+  }
 }

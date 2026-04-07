@@ -7,6 +7,12 @@ if (configDirIdx !== -1 && configDirIdx + 1 < process.argv.length) {
   process.env.MCPX_CONFIG_DIR = process.argv[configDirIdx + 1];
 }
 
+// Early arg scanning for --log (must be set before commands run)
+const logIdx = process.argv.indexOf("--log");
+if (logIdx !== -1 && logIdx + 1 < process.argv.length) {
+  import("./audit/logger.js").then(({ setLogPath }) => setLogPath(process.argv[logIdx + 1]));
+}
+
 // Load .env file from cwd (before any other imports read env)
 (function loadDotEnv() {
   if (!existsSync(".env")) return;
@@ -25,7 +31,7 @@ import { Command } from "commander";
 import { invokeTool, listTools, runAdd, runUpdate, runServers, runRemove, getToolSchema, runImport, runSkills, runInspect, runListPrompts, runGetPrompt, runAlias, runAliasExec, runListResources, runReadResource, runDiff, runTest } from "./cli/commands.js";
 import { parseSlashCommand, parsePShorthand, GLOBAL_VALUE_FLAGS } from "./cli/router.js";
 import { runInteractive } from "./interactive/repl.js";
-import { output, errorEnvelope, successResult, EXIT, type Envelope } from "./output/envelope.js";
+import { output, errorEnvelope, successResult, successEmpty, EXIT, type Envelope } from "./output/envelope.js";
 import { formatResult, formatToolList, detectFormat, type Format } from "./output/formatter.js";
 import { generateBashCompletion, generateZshCompletion } from "./cli/completion.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
@@ -108,7 +114,8 @@ program
   .option("-v, --verbose", "Show debug info")
   .option("-t, --timeout <ms>", "Connection timeout in milliseconds", "30000")
   .option("-f, --format <format>", "Output format: json | table | yaml")
-  .option("--config-dir <path>", "Override config directory (default: ~/.config/mcpx)");
+  .option("--config-dir <path>", "Override config directory (default: ~/.config/mcpx)")
+  .option("--log <path>", "Append tool invocations to NDJSON log file");
 
 program
   .command("list [server]")
@@ -288,9 +295,22 @@ program
 program
   .command("serve")
   .description("Run mcpx as an MCP server (gateway for all registered servers)")
-  .action(async () => {
+  .option("--port <port>", "Start HTTP server on this port (default: stdio)")
+  .action(async (opts: { port?: string }) => {
     const { startGateway } = await import("./serve/gateway.js");
-    await startGateway({ verbose: program.opts().verbose });
+    await startGateway({
+      verbose: program.opts().verbose,
+      port: opts.port ? Number(opts.port) : undefined,
+    });
+  });
+
+program
+  .command("workflow <file>")
+  .description("Run a multi-step workflow from a YAML file")
+  .action(async (file: string) => {
+    const { runWorkflow } = await import("./workflows/runner.js");
+    const envelope = await runWorkflow(file, getOpts());
+    emitOutput(envelope);
   });
 
 program
@@ -300,6 +320,30 @@ program
     const alias = server.startsWith("/") ? server.slice(1) : server;
     const envelope = await runTest({ ...getOpts(), serverAlias: alias });
     emitOutput(envelope);
+  });
+
+program
+  .command("hook <action> [pattern] [command]")
+  .description("Manage hooks (list | add <pattern> <command> | remove <pattern>)")
+  .action(async (action: string, pattern?: string, command?: string) => {
+    if (action === "list") {
+      const { getHooks } = await import("./config/store.js");
+      const hooks = getHooks();
+      emitOutput(successResult([{ type: "text", text: JSON.stringify(hooks, null, 2) }]));
+    } else if (action === "add" && pattern && command) {
+      const { addHook } = await import("./config/store.js");
+      addHook(pattern, command);
+      emitOutput(successEmpty());
+    } else if (action === "remove" && pattern) {
+      const { removeHook } = await import("./config/store.js");
+      if (!removeHook(pattern)) {
+        emitOutput(errorEnvelope(EXIT.CONFIG_ERROR, `Hook "${pattern}" not found.`));
+      } else {
+        emitOutput(successEmpty());
+      }
+    } else {
+      emitOutput(errorEnvelope(EXIT.VALIDATION_ERROR, "Usage: mcpx hook list | add <pattern> <command> | remove <pattern>"));
+    }
   });
 
 program
