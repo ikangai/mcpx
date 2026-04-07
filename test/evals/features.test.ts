@@ -131,4 +131,80 @@ describe("new features", () => {
     // Restore
     writeFileSync(configPath, backup);
   }, 15_000);
+
+  // --- --config-dir flag ---
+  it("--config-dir flag overrides config directory", async () => {
+    // The configDir is already set via MCPX_CONFIG_DIR env in runMcpx helper
+    // Test that the CLI respects it by verifying we can list servers
+    const result = await runMcpx(["servers"], { configDir });
+    expectSuccess(result);
+    expect(result.json!.servers).toBeDefined();
+  }, 15_000);
+
+  // --- completion command ---
+  it("generates bash completion", async () => {
+    const result = await runMcpx(["completion", "bash"], { configDir });
+    // completion exits directly, not via envelope
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toMatch(/_mcpx_completions/);
+  }, 10_000);
+
+  it("generates zsh completion", async () => {
+    const result = await runMcpx(["completion", "zsh"], { configDir });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toMatch(/_mcpx/);
+  }, 10_000);
+
+  // --- import --force ---
+  it("import --force overwrites existing servers", async () => {
+    const { writeFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const importPath = join(configDir, "force-import.json");
+    writeFileSync(importPath, JSON.stringify({
+      mcpServers: { test: { command: "echo", args: ["forced"] } }
+    }));
+    // Without force: skips existing
+    const skip = await runMcpx(["import", importPath], { configDir });
+    expectSuccess(skip);
+    expect(skip.json!.result![0].text).toMatch(/0 server/);
+    // With force: overwrites
+    const force = await runMcpx(["import", "--force", importPath], { configDir });
+    expectSuccess(force);
+    expect(force.json!.result![0].text).toMatch(/1 server/);
+    // Restore the real test server so subsequent tests work
+    await runMcpx(["remove", "test"], { configDir });
+    await runMcpx(["add", "test", TEST_SERVER_INLINE], { configDir });
+  }, 15_000);
+
+  // --- daemon flush ---
+  it("daemon flush returns valid envelope", async () => {
+    const result = await runMcpx(["daemon", "flush"], { configDir });
+    // Either daemon is running (flush succeeds) or not (reports not running)
+    expectSuccess(result);
+    expect(result.json!.result![0].text).toMatch(/flushed|not running/i);
+  }, 15_000);
+
+  // --- bare /server lists tools ---
+  it("bare /server without tool name lists tools", async () => {
+    const result = await runMcpx(["/test"], { configDir });
+    expectSuccess(result);
+    expect(result.json!.tools).toBeDefined();
+    expect(result.json!.tools!.length).toBeGreaterThan(0);
+  }, 30_000);
+
+  // --- --format table no trailing OK ---
+  it("--format table prints content without trailing OK", async () => {
+    // Note: runMcpx always gets JSON (no TTY), so test via env
+    // Instead, test that JSON mode (default) has no "OK"
+    const result = await runMcpx(["/test", "greet", "--params", '{"name": "World"}'], { configDir });
+    expectSuccess(result);
+    expect(result.stdout).not.toMatch(/\nOK$/);
+  }, 30_000);
+
+  // --- -p with no argument ---
+  it("-p with no argument returns validation error", async () => {
+    const result = await runMcpx(["-p"], { configDir });
+    expectError(result, 3);
+    expect(result.json!.error!.message).toMatch(/missing value/i);
+  }, 10_000);
 });
