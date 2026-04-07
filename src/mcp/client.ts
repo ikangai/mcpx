@@ -85,6 +85,18 @@ export class McpClient {
     return await this.client.readResource({ uri });
   }
 
+  async complete(ref: { type: string; name?: string; uri?: string }, argName: string, value: string): Promise<string[]> {
+    try {
+      const result = await this.client.complete({
+        ref: ref as any,
+        argument: { name: argName, value },
+      });
+      return result.completion.values;
+    } catch {
+      return []; // Server doesn't support completions
+    }
+  }
+
   async close(): Promise<void> {
     await this.client.close();
   }
