@@ -47,6 +47,44 @@ export class McpClient {
     return await this.client.callTool({ name, arguments: args });
   }
 
+  getServerCapabilities(): Record<string, unknown> | undefined {
+    return this.client.getServerCapabilities() as Record<string, unknown> | undefined;
+  }
+
+  getInstructions(): string | undefined {
+    return this.client.getInstructions();
+  }
+
+  getServerVersion(): { name: string; version: string } | undefined {
+    return this.client.getServerVersion() as { name: string; version: string } | undefined;
+  }
+
+  async listPrompts(): Promise<Array<{ name: string; description?: string }>> {
+    try {
+      const result = await this.client.listPrompts({});
+      return result.prompts;
+    } catch {
+      return []; // Server doesn't support prompts
+    }
+  }
+
+  async getPrompt(name: string, args?: Record<string, string>): Promise<unknown> {
+    return await this.client.getPrompt({ name, arguments: args });
+  }
+
+  async listResources(): Promise<Array<{ uri: string; name?: string; description?: string; mimeType?: string }>> {
+    try {
+      const result = await this.client.listResources({});
+      return result.resources;
+    } catch {
+      return []; // Server doesn't support resources
+    }
+  }
+
+  async readResource(uri: string): Promise<unknown> {
+    return await this.client.readResource({ uri });
+  }
+
   async close(): Promise<void> {
     await this.client.close();
   }

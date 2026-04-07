@@ -425,6 +425,52 @@ export async function runSkills(serverAlias: string, opts?: ServerOpts): Promise
   }
 }
 
+export async function runInspect(opts: ServerOpts): Promise<Envelope> {
+  let serverConfig: ServerConfig;
+  try {
+    serverConfig = resolveServer(opts);
+  } catch (err) {
+    if (err instanceof ConfigError) return errorEnvelope(EXIT.CONFIG_ERROR, err.message);
+    return errorEnvelope(EXIT.INTERNAL_ERROR, (err as Error).message);
+  }
+
+  const client = new McpClient();
+  try {
+    await client.connect(serverConfig, { verbose: opts?.verbose, timeout: opts?.timeout });
+    const tools = await client.listTools();
+    const prompts = await client.listPrompts();
+    const resources = await client.listResources();
+    const capabilities = client.getServerCapabilities();
+    const version = client.getServerVersion();
+    const instructions = client.getInstructions();
+
+    const info: Record<string, unknown> = {
+      name: version?.name,
+      version: version?.version,
+      capabilities: capabilities ?? {},
+      instructions: instructions ?? null,
+      tools: tools.length,
+      prompts: prompts.length,
+      resources: resources.length,
+    };
+
+    // Include tool annotations summary
+    const annotated = tools.filter((t: any) => t.annotations);
+    if (annotated.length > 0) {
+      info.annotatedTools = annotated.map((t: any) => ({
+        name: t.name,
+        annotations: t.annotations,
+      }));
+    }
+
+    return successResult([{ type: "text", text: JSON.stringify(info, null, 2) }]);
+  } catch (err) {
+    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+  } finally {
+    await client.close();
+  }
+}
+
 function findClaudeConfig(): string | null {
   const candidates = [
     join(homedir(), "Library", "Application Support", "Claude", "claude_desktop_config.json"),

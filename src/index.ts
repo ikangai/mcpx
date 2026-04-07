@@ -22,7 +22,7 @@ if (configDirIdx !== -1 && configDirIdx + 1 < process.argv.length) {
 })();
 
 import { Command } from "commander";
-import { invokeTool, listTools, runAdd, runUpdate, runServers, runRemove, getToolSchema, runImport, runSkills } from "./cli/commands.js";
+import { invokeTool, listTools, runAdd, runUpdate, runServers, runRemove, getToolSchema, runImport, runSkills, runInspect } from "./cli/commands.js";
 import { parseSlashCommand, parsePShorthand, GLOBAL_VALUE_FLAGS } from "./cli/router.js";
 import { runInteractive } from "./interactive/repl.js";
 import { output, errorEnvelope, successResult, EXIT, type Envelope } from "./output/envelope.js";
@@ -206,6 +206,15 @@ program
   .action(async (server: string) => {
     const alias = server.startsWith("/") ? server.slice(1) : server;
     const envelope = await runSkills(alias, getOpts());
+    emitOutput(envelope);
+  });
+
+program
+  .command("inspect <server>")
+  .description("Show server capabilities, version, and metadata")
+  .action(async (server: string) => {
+    const alias = server.startsWith("/") ? server.slice(1) : server;
+    const envelope = await runInspect({ ...getOpts(), serverAlias: alias });
     emitOutput(envelope);
   });
 
