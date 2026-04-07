@@ -67,6 +67,27 @@ export function importServers(configPath: string): string[] {
   return imported;
 }
 
+export function updateServer(alias: string, updates: {
+  command?: string;
+  env?: Record<string, string>;
+}): boolean {
+  const config = loadServers();
+  const server = config.mcpServers[alias];
+  if (!server) return false;
+
+  if (updates.command) {
+    const parts = updates.command.split(/\s+/);
+    server.command = parts[0];
+    server.args = parts.slice(1);
+  }
+  if (updates.env) {
+    server.env = { ...server.env, ...updates.env };
+  }
+
+  saveServers(config);
+  return true;
+}
+
 export function removeServer(alias: string): boolean {
   const config = loadServers();
   if (!(alias in config.mcpServers)) return false;

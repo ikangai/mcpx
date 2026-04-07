@@ -6,7 +6,7 @@ import type { JsonSchema } from "../utils/schema.js";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { addServer, removeServer, getServer, getAllServers, importServers } from "../config/store.js";
+import { addServer, removeServer, updateServer, getServer, getAllServers, importServers } from "../config/store.js";
 import { generateSkill } from "../skills/generator.js";
 import { DaemonClient } from "../daemon/client.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
@@ -16,6 +16,7 @@ import {
   successResult,
   successSchema,
   successServers,
+  successEmpty,
   errorEnvelope,
   EXIT,
   type ContentItem,
@@ -26,9 +27,9 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-class ConfigError extends Error {}
+export class ConfigError extends Error {}
 
-function resolveServer(opts: {
+export function resolveServer(opts: {
   server?: string;
   config?: string;
   serverName?: string;
@@ -105,13 +106,13 @@ function extractParams(args: string[]): string | null {
   return null;
 }
 
-type ServerOpts = {
+export type ServerOpts = {
   server?: string;
   config?: string;
   serverName?: string;
   serverAlias?: string;
   verbose?: boolean;
-  timeout?: string;
+  timeout?: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -240,7 +241,7 @@ export async function invokeTool(
       }
 
       return successResult(result.content);
-    }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined, serverAlias: opts?.serverAlias });
+    }, { verbose: opts?.verbose, timeout: opts?.timeout, serverAlias: opts?.serverAlias });
   } catch (err) {
     return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
   }
@@ -272,7 +273,7 @@ export async function listTools(opts: ServerOpts): Promise<Envelope> {
           server: opts.serverAlias,
         }))
       );
-    }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined, serverAlias: opts?.serverAlias });
+    }, { verbose: opts?.verbose, timeout: opts?.timeout, serverAlias: opts?.serverAlias });
   } catch (err) {
     return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
   }
@@ -294,7 +295,7 @@ async function listAllServers(opts?: ServerOpts): Promise<Envelope> {
           inputSchema: t.inputSchema as Record<string, unknown>,
           server: alias,
         }));
-      }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined, serverAlias: alias });
+      }, { verbose: opts?.verbose, timeout: opts?.timeout, serverAlias: alias });
     })
   );
 
@@ -333,7 +334,7 @@ export async function getToolSchema(
         ...tool.inputSchema,
         description: tool.description,
       } as Record<string, unknown>);
-    }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined, serverAlias: opts?.serverAlias });
+    }, { verbose: opts?.verbose, timeout: opts?.timeout, serverAlias: opts?.serverAlias });
   } catch (err) {
     return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
   }
@@ -342,7 +343,7 @@ export async function getToolSchema(
 export async function runAdd(alias: string, command: string, env?: Record<string, string>): Promise<Envelope> {
   try {
     addServer(alias, command, env);
-    return { ok: true } as Envelope;
+    return successEmpty();
   } catch (err) {
     return errorEnvelope(EXIT.CONFIG_ERROR, (err as Error).message);
   }
@@ -363,7 +364,14 @@ export async function runRemove(alias: string): Promise<Envelope> {
   if (!removeServer(alias)) {
     return errorEnvelope(EXIT.CONFIG_ERROR, `Server "${alias}" not found.`);
   }
-  return { ok: true } as Envelope;
+  return successEmpty();
+}
+
+export async function runUpdate(alias: string, opts: { command?: string; env?: Record<string, string> }): Promise<Envelope> {
+  if (!updateServer(alias, opts)) {
+    return errorEnvelope(EXIT.CONFIG_ERROR, `Server "${alias}" not found.`);
+  }
+  return successEmpty();
 }
 
 export async function runImport(configPath?: string): Promise<Envelope> {
@@ -395,7 +403,7 @@ export async function runSkills(serverAlias: string, opts?: ServerOpts): Promise
     return await withServer(serverConfig, async (_client, tools) => {
       const skill = generateSkill(serverAlias, tools);
       return successResult([{ type: "text", text: skill }]);
-    }, { verbose: opts?.verbose, timeout: opts?.timeout ? Number(opts.timeout) : undefined, serverAlias });
+    }, { verbose: opts?.verbose, timeout: opts?.timeout, serverAlias });
   } catch (err) {
     return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
   }

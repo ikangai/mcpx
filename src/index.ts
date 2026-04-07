@@ -16,7 +16,7 @@ import { readFileSync, existsSync } from "node:fs";
 })();
 
 import { Command } from "commander";
-import { invokeTool, listTools, runAdd, runServers, runRemove, getToolSchema, runImport, runSkills } from "./cli/commands.js";
+import { invokeTool, listTools, runAdd, runUpdate, runServers, runRemove, getToolSchema, runImport, runSkills } from "./cli/commands.js";
 import { parseSlashCommand, parsePShorthand } from "./cli/router.js";
 import { runInteractive } from "./interactive/repl.js";
 import { output, errorEnvelope, successResult, EXIT, type Envelope } from "./output/envelope.js";
@@ -157,6 +157,24 @@ program
   .description("Remove a registered server")
   .action(async (alias: string) => {
     const envelope = await runRemove(alias);
+    emitOutput(envelope);
+  });
+
+program
+  .command("update <alias>")
+  .description("Update a registered server's configuration")
+  .option("--command <command>", "New server command")
+  .option("-e, --env <KEY=VALUE...>", "Set/update environment variables")
+  .action(async (alias: string, opts: { command?: string; env?: string[] }) => {
+    const env: Record<string, string> = {};
+    for (const e of opts.env ?? []) {
+      const idx = e.indexOf("=");
+      if (idx > 0) env[e.slice(0, idx)] = e.slice(idx + 1);
+    }
+    const envelope = await runUpdate(alias, {
+      command: opts.command,
+      env: Object.keys(env).length > 0 ? env : undefined,
+    });
     emitOutput(envelope);
   });
 
