@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { runList, runExec, runAdd } from "./cli/commands.js";
+import { runList, runExec, runAdd, runSlashExec } from "./cli/commands.js";
+import { parseSlashCommand } from "./cli/router.js";
 import { runInteractive } from "./interactive/repl.js";
 import { output, errorEnvelope, EXIT } from "./output/envelope.js";
 
@@ -50,6 +51,14 @@ program
     await runInteractive(program.opts());
   });
 
-program.parseAsync().catch((err) => {
-  output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message));
-});
+// Check for slash-command pattern before commander parses
+const slash = parseSlashCommand(process.argv);
+if (slash) {
+  runSlashExec(slash.serverAlias, slash.toolName, slash.toolArgs)
+    .then((envelope) => output(envelope))
+    .catch((err) => output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message)));
+} else {
+  program.parseAsync().catch((err) => {
+    output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message));
+  });
+}

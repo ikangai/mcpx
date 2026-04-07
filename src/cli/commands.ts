@@ -4,7 +4,7 @@ import { parseServerSpec, parseConfigFile, type ServerConfig } from "../mcp/conf
 import { addToolFlags, parseToolArgs } from "./flags.js";
 import type { JsonSchema } from "../utils/schema.js";
 import { readFileSync } from "node:fs";
-import { addServer } from "../config/store.js";
+import { addServer, getServer, getAllServers } from "../config/store.js";
 import {
   type Envelope,
   successTools,
@@ -101,6 +101,107 @@ export async function runExec(
     }
 
     const args = parseToolArgs(tmpCmd.opts(), tool.inputSchema as JsonSchema);
+    const result = await client.callTool(toolName, args) as {
+      content: Array<ContentItem>;
+      isError?: boolean;
+    };
+
+    if (result.isError) {
+      const msg = result.content
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("\n");
+      return errorEnvelope(EXIT.TOOL_ERROR, msg || "Tool returned an error");
+    }
+
+    return successResult(result.content);
+  } catch (err) {
+    return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
+  } finally {
+    await client.close();
+  }
+}
+
+/**
+ * Extract --params or --json value from args array.
+ * Returns the JSON string or null if neither flag is present.
+ * --params takes precedence.
+ */
+function extractParams(args: string[]): string | null {
+  for (const flag of ["--params", "--json"]) {
+    const idx = args.indexOf(flag);
+    if (idx !== -1 && idx + 1 < args.length) {
+      return args[idx + 1];
+    }
+  }
+  return null;
+}
+
+export async function runSlashExec(
+  serverAlias: string,
+  toolName: string,
+  toolArgs: string[]
+): Promise<Envelope> {
+  const serverConfig = getServer(serverAlias);
+  if (!serverConfig) {
+    const available = Object.keys(getAllServers()).join(", ");
+    return errorEnvelope(
+      EXIT.CONFIG_ERROR,
+      `Server "${serverAlias}" not found. Available: ${available || "(none)"}`
+    );
+  }
+
+  const client = new McpClient();
+  try {
+    await client.connect(serverConfig);
+    const tools = await client.listTools();
+    const tool = tools.find((t) => t.name === toolName);
+
+    if (!tool) {
+      const available = tools.map((t) => t.name).join(", ");
+      return errorEnvelope(
+        EXIT.VALIDATION_ERROR,
+        `Tool "${toolName}" not found on server "${serverAlias}". Available: ${available}`
+      );
+    }
+
+    // Parse --params / --json if present, otherwise fall back to per-field flags
+    const params = extractParams(toolArgs);
+    let args: Record<string, unknown>;
+
+    if (params !== null) {
+      try {
+        args = JSON.parse(params);
+      } catch {
+        return errorEnvelope(EXIT.VALIDATION_ERROR, "Invalid JSON in --params/--json");
+      }
+    } else {
+      // Filter out --dry-run from tool args before passing to commander
+      const filteredArgs = toolArgs.filter((a) => a !== "--dry-run");
+      const tmpCmd = new Command(toolName);
+      tmpCmd.exitOverride();
+      addToolFlags(tmpCmd, tool.inputSchema as JsonSchema);
+      try {
+        tmpCmd.parse(filteredArgs, { from: "user" });
+      } catch (err) {
+        return errorEnvelope(EXIT.VALIDATION_ERROR, (err as Error).message);
+      }
+      args = parseToolArgs(tmpCmd.opts(), tool.inputSchema as JsonSchema);
+    }
+
+    // Check for --dry-run
+    if (toolArgs.includes("--dry-run")) {
+      return successResult([{
+        type: "text",
+        text: JSON.stringify({
+          dryRun: true,
+          server: serverAlias,
+          tool: toolName,
+          arguments: args,
+        }, null, 2),
+      }]);
+    }
+
     const result = await client.callTool(toolName, args) as {
       content: Array<ContentItem>;
       isError?: boolean;
