@@ -28,15 +28,13 @@ if (logIdx !== -1 && logIdx + 1 < process.argv.length) {
 })();
 
 import { Command } from "commander";
-import { invokeTool, listTools, runAdd, runUpdate, runServers, runRemove, getToolSchema, runImport, runSkills, runInspect, runListPrompts, runGetPrompt, runAlias, runAliasExec, runListResources, runReadResource, runDiff, runTest } from "./cli/commands.js";
+import { invokeTool, listTools } from "./cli/commands.js";
 import { parseSlashCommand, parsePShorthand, GLOBAL_VALUE_FLAGS } from "./cli/router.js";
-import { runInteractive } from "./interactive/repl.js";
-import { output, errorEnvelope, successResult, successEmpty, EXIT, type Envelope } from "./output/envelope.js";
+import { output, errorEnvelope, EXIT, type Envelope } from "./output/envelope.js";
 import { formatResult, formatToolList, detectFormat, type Format } from "./output/formatter.js";
-import { generateBashCompletion, generateZshCompletion } from "./cli/completion.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import YAML from "yaml";
-import { DaemonClient } from "./daemon/client.js";
+import { registerCommands } from "./cli/register.js";
 
 function extractGlobalOpts(argv: string[]): { verbose?: boolean; timeout?: number; format?: string } {
   const opts: { verbose?: boolean; timeout?: number; format?: string } = {};
@@ -102,361 +100,6 @@ function emitOutput(envelope: Envelope, formatOverride?: string): never {
   return output(envelope);
 }
 
-const program = new Command();
-
-program
-  .name("mcpx")
-  .description("Transform MCP servers into CLI commands")
-  .version("0.1.0")
-  .option("-s, --server <command>", "MCP server command (inline)")
-  .option("-c, --config <file>", "Path to config file")
-  .option("-n, --server-name <name>", "Server name from config")
-  .option("-v, --verbose", "Show debug info")
-  .option("-t, --timeout <ms>", "Connection timeout in milliseconds", "30000")
-  .option("-f, --format <format>", "Output format: json | table | yaml")
-  .option("--config-dir <path>", "Override config directory (default: ~/.config/mcpx)")
-  .option("--log <path>", "Append tool invocations to NDJSON log file");
-
-program
-  .command("list [server]")
-  .description("List available tools (optionally filter by /server)")
-  .action(async (server?: string) => {
-    const opts = getOpts();
-    if (server?.startsWith("/")) {
-      opts.serverAlias = server.slice(1);
-    }
-    const envelope = await listTools(opts);
-    emitOutput(envelope);
-  });
-
-program
-  .command("exec <tool>")
-  .description("Execute an MCP tool")
-  .allowUnknownOption()
-  .allowExcessArguments()
-  .helpOption(false)
-  .action(async (toolName: string, _opts: unknown, cmd: Command) => {
-    const toolArgs = cmd.args.filter((a) => a !== toolName);
-    const envelope = await invokeTool(toolName, toolArgs, getOpts());
-    emitOutput(envelope);
-  });
-
-program
-  .command("add <alias> <command>")
-  .description("Register an MCP server with a short alias")
-  .option("-e, --env <KEY=VALUE...>", "Set environment variable (repeatable)")
-  .action(async (alias: string, command: string, opts: { env?: string[] }) => {
-    const env: Record<string, string> = {};
-    for (const e of opts.env ?? []) {
-      const idx = e.indexOf("=");
-      if (idx > 0) env[e.slice(0, idx)] = e.slice(idx + 1);
-    }
-    const envelope = await runAdd(alias, command, Object.keys(env).length > 0 ? env : undefined);
-    emitOutput(envelope);
-  });
-
-program
-  .command("schema <server> <tool>")
-  .description("Show full input schema for a tool")
-  .action(async (server: string, tool: string) => {
-    const alias = server.startsWith("/") ? server.slice(1) : server;
-    const envelope = await getToolSchema(tool, { ...getOpts(), serverAlias: alias });
-    emitOutput(envelope);
-  });
-
-program
-  .command("servers")
-  .description("List registered servers")
-  .action(async () => {
-    const envelope = await runServers();
-    emitOutput(envelope);
-  });
-
-program
-  .command("remove <alias>")
-  .description("Remove a registered server")
-  .action(async (alias: string) => {
-    const envelope = await runRemove(alias);
-    emitOutput(envelope);
-  });
-
-program
-  .command("update <alias>")
-  .description("Update a registered server's configuration")
-  .option("--command <command>", "New server command")
-  .option("-e, --env <KEY=VALUE...>", "Set/update environment variables")
-  .action(async (alias: string, opts: { command?: string; env?: string[] }) => {
-    const env: Record<string, string> = {};
-    for (const e of opts.env ?? []) {
-      const idx = e.indexOf("=");
-      if (idx > 0) env[e.slice(0, idx)] = e.slice(idx + 1);
-    }
-    const envelope = await runUpdate(alias, {
-      command: opts.command,
-      env: Object.keys(env).length > 0 ? env : undefined,
-    });
-    emitOutput(envelope);
-  });
-
-program
-  .command("import [config-path]")
-  .description("Import servers from Claude Desktop config")
-  .option("--force", "Overwrite existing server aliases")
-  .action(async (configPath?: string, opts?: { force?: boolean }) => {
-    const envelope = await runImport(configPath, opts?.force);
-    emitOutput(envelope);
-  });
-
-program
-  .command("skills <server>")
-  .description("Generate agent skill documentation for a server")
-  .action(async (server: string) => {
-    const alias = server.startsWith("/") ? server.slice(1) : server;
-    const envelope = await runSkills(alias, getOpts());
-    emitOutput(envelope);
-  });
-
-program
-  .command("inspect <server>")
-  .description("Show server capabilities, version, and metadata")
-  .action(async (server: string) => {
-    const alias = server.startsWith("/") ? server.slice(1) : server;
-    const envelope = await runInspect({ ...getOpts(), serverAlias: alias });
-    emitOutput(envelope);
-  });
-
-program
-  .command("prompts <server>")
-  .description("List available prompts from a server")
-  .action(async (server: string) => {
-    const alias = server.startsWith("/") ? server.slice(1) : server;
-    const envelope = await runListPrompts({ ...getOpts(), serverAlias: alias });
-    emitOutput(envelope);
-  });
-
-program
-  .command("prompt <server> <name>")
-  .description("Get a prompt template from a server")
-  .option("--args <json>", "Prompt arguments as JSON")
-  .action(async (server: string, name: string, opts: { args?: string }) => {
-    const alias = server.startsWith("/") ? server.slice(1) : server;
-    const args = opts.args ? JSON.parse(opts.args) : {};
-    const envelope = await runGetPrompt(name, args, { ...getOpts(), serverAlias: alias });
-    emitOutput(envelope);
-  });
-
-program
-  .command("resources <server>")
-  .description("List available resources from a server")
-  .action(async (server: string) => {
-    const alias = server.startsWith("/") ? server.slice(1) : server;
-    const envelope = await runListResources({ ...getOpts(), serverAlias: alias });
-    emitOutput(envelope);
-  });
-
-program
-  .command("resource <server> <uri>")
-  .description("Read a resource by URI from a server")
-  .action(async (server: string, uri: string) => {
-    const alias = server.startsWith("/") ? server.slice(1) : server;
-    const envelope = await runReadResource(uri, { ...getOpts(), serverAlias: alias });
-    emitOutput(envelope);
-  });
-
-program
-  .command("alias <action> [name] [command]")
-  .description("Manage tool aliases (list | set <name> <command> | remove <name>)")
-  .action(async (action: string, name?: string, command?: string) => {
-    const envelope = await runAlias(action, name, command);
-    emitOutput(envelope);
-  });
-
-program
-  .command("run <name>")
-  .description("Execute a saved alias")
-  .allowUnknownOption()
-  .allowExcessArguments()
-  .helpOption(false)
-  .action(async (name: string, _opts: unknown, cmd: Command) => {
-    const extraArgs = cmd.args.filter((a) => a !== name);
-    const envelope = await runAliasExec(name, extraArgs, getOpts());
-    emitOutput(envelope);
-  });
-
-program
-  .command("diff <server>")
-  .description("Compare tool schemas against last snapshot")
-  .action(async (server: string) => {
-    const alias = server.startsWith("/") ? server.slice(1) : server;
-    const envelope = await runDiff(alias, getOpts());
-    emitOutput(envelope);
-  });
-
-program
-  .command("serve")
-  .description("Run mcpx as an MCP server (gateway for all registered servers)")
-  .option("--port <port>", "Start HTTP server on this port (default: stdio)")
-  .action(async (opts: { port?: string }) => {
-    const { startGateway } = await import("./serve/gateway.js");
-    await startGateway({
-      verbose: program.opts().verbose,
-      port: opts.port ? Number(opts.port) : undefined,
-    });
-  });
-
-program
-  .command("workflow <file>")
-  .description("Run a multi-step workflow from a YAML file")
-  .action(async (file: string) => {
-    const { runWorkflow } = await import("./workflows/runner.js");
-    const envelope = await runWorkflow(file, getOpts());
-    emitOutput(envelope);
-  });
-
-program
-  .command("test <server>")
-  .description("Verify a server is reachable and responding")
-  .action(async (server: string) => {
-    const alias = server.startsWith("/") ? server.slice(1) : server;
-    const envelope = await runTest({ ...getOpts(), serverAlias: alias });
-    emitOutput(envelope);
-  });
-
-program
-  .command("hook <action> [pattern] [command]")
-  .description("Manage hooks (list | add <pattern> <command> | remove <pattern>)")
-  .action(async (action: string, pattern?: string, command?: string) => {
-    if (action === "list") {
-      const { getHooks } = await import("./config/store.js");
-      const hooks = getHooks();
-      emitOutput(successResult([{ type: "text", text: JSON.stringify(hooks, null, 2) }]));
-    } else if (action === "add" && pattern && command) {
-      const { addHook } = await import("./config/store.js");
-      addHook(pattern, command);
-      emitOutput(successEmpty());
-    } else if (action === "remove" && pattern) {
-      const { removeHook } = await import("./config/store.js");
-      if (!removeHook(pattern)) {
-        emitOutput(errorEnvelope(EXIT.CONFIG_ERROR, `Hook "${pattern}" not found.`));
-      } else {
-        emitOutput(successEmpty());
-      }
-    } else {
-      emitOutput(errorEnvelope(EXIT.VALIDATION_ERROR, "Usage: mcpx hook list | add <pattern> <command> | remove <pattern>"));
-    }
-  });
-
-program
-  .command("interactive [server]")
-  .alias("i")
-  .description("Start interactive REPL mode")
-  .action(async (server?: string) => {
-    const alias = server?.startsWith("/") ? server.slice(1) : server;
-    await runInteractive(getOpts(), alias);
-  });
-
-program
-  .command("watch <interval> <server> <tool>")
-  .description("Re-execute a tool periodically (e.g., watch 5s /pg list_active_queries)")
-  .allowUnknownOption()
-  .allowExcessArguments()
-  .helpOption(false)
-  .action(async (interval: string, server: string, tool: string, _opts: unknown, cmd: Command) => {
-    const alias = server.startsWith("/") ? server.slice(1) : server;
-    const toolArgs = cmd.args.filter((a) => a !== interval && a !== server && a !== tool);
-    const ms = parseInterval(interval);
-    if (!ms) {
-      emitOutput(errorEnvelope(EXIT.VALIDATION_ERROR, `Invalid interval: ${interval}. Use format like 5s, 1m, 500ms`));
-      return;
-    }
-
-    // First execution
-    const opts = { ...getOpts(), serverAlias: alias };
-    const first = await invokeTool(tool, toolArgs, opts);
-    console.log(JSON.stringify(first));
-
-    // Subsequent executions
-    const timer = setInterval(async () => {
-      const result = await invokeTool(tool, toolArgs, opts);
-      console.log(JSON.stringify(result));
-    }, ms);
-
-    // Clean exit on Ctrl+C
-    process.on("SIGINT", () => {
-      clearInterval(timer);
-      process.exit(0);
-    });
-  });
-
-program
-  .command("completion [shell]")
-  .description("Generate shell completion script (bash or zsh)")
-  .action((shell?: string) => {
-    const s = shell ?? (process.env.SHELL?.includes("zsh") ? "zsh" : "bash");
-    if (s === "zsh") {
-      console.log(generateZshCompletion());
-    } else {
-      console.log(generateBashCompletion());
-    }
-    process.exit(0);
-  });
-
-program
-  .command("daemon <action>")
-  .description("Manage the connection daemon (start|stop|status|flush)")
-  .action(async (action: string) => {
-    const daemon = new DaemonClient();
-
-    if (action === "start") {
-      if (await daemon.tryConnect()) {
-        const alive = await daemon.ping();
-        daemon.close();
-        if (alive) {
-          emitOutput(successResult([{ type: "text", text: "Daemon is already running." }]));
-          return;
-        }
-      }
-      // tryConnect auto-starts the daemon
-      const connected = await daemon.tryConnect();
-      daemon.close();
-      if (connected) {
-        emitOutput(successResult([{ type: "text", text: "Daemon started." }]));
-      } else {
-        emitOutput(errorEnvelope(EXIT.INTERNAL_ERROR, "Failed to start daemon."));
-      }
-    } else if (action === "stop") {
-      if (await daemon.tryConnect()) {
-        await daemon.shutdown();
-        daemon.close();
-        emitOutput(successResult([{ type: "text", text: "Daemon stopped." }]));
-      } else {
-        emitOutput(successResult([{ type: "text", text: "Daemon is not running." }]));
-      }
-    } else if (action === "status") {
-      if (await daemon.tryConnect()) {
-        const alive = await daemon.ping();
-        daemon.close();
-        if (alive) {
-          emitOutput(successResult([{ type: "text", text: "Daemon is running." }]));
-        } else {
-          emitOutput(successResult([{ type: "text", text: "Daemon is not responding." }]));
-        }
-      } else {
-        emitOutput(successResult([{ type: "text", text: "Daemon is not running." }]));
-      }
-    } else if (action === "flush") {
-      if (await daemon.tryConnect()) {
-        await daemon.flush();
-        daemon.close();
-        emitOutput(successResult([{ type: "text", text: "All cached connections flushed." }]));
-      } else {
-        emitOutput(successResult([{ type: "text", text: "Daemon is not running." }]));
-      }
-    } else {
-      emitOutput(errorEnvelope(EXIT.VALIDATION_ERROR, `Unknown daemon action: ${action}. Use start, stop, status, or flush.`));
-    }
-  });
-
 function parseInterval(s: string): number | null {
   const match = s.match(/^(\d+)(ms|s|m)$/);
   if (!match) return null;
@@ -481,6 +124,31 @@ function findBareServer(args: string[]): string | null {
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// Program setup
+// ---------------------------------------------------------------------------
+
+const program = new Command();
+
+program
+  .name("mcpx")
+  .description("Transform MCP servers into CLI commands")
+  .version("0.1.0")
+  .option("-s, --server <command>", "MCP server command (inline)")
+  .option("-c, --config <file>", "Path to config file")
+  .option("-n, --server-name <name>", "Server name from config")
+  .option("-v, --verbose", "Show debug info")
+  .option("-t, --timeout <ms>", "Connection timeout in milliseconds", "30000")
+  .option("-f, --format <format>", "Output format: json | table | yaml")
+  .option("--config-dir <path>", "Override config directory (default: ~/.config/mcpx)")
+  .option("--log <path>", "Append tool invocations to NDJSON log file");
+
+registerCommands(program, emitOutput, getOpts, parseInterval);
+
+// ---------------------------------------------------------------------------
+// Routing: -p shorthand, slash commands, bare /server, commander fallback
+// ---------------------------------------------------------------------------
 
 // Check for -p shorthand
 const pIdx = process.argv.indexOf("-p");
