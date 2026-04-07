@@ -248,6 +248,39 @@ program
   });
 
 program
+  .command("watch <interval> <server> <tool>")
+  .description("Re-execute a tool periodically (e.g., watch 5s /pg list_active_queries)")
+  .allowUnknownOption()
+  .allowExcessArguments()
+  .helpOption(false)
+  .action(async (interval: string, server: string, tool: string, _opts: unknown, cmd: Command) => {
+    const alias = server.startsWith("/") ? server.slice(1) : server;
+    const toolArgs = cmd.args.filter((a) => a !== interval && a !== server && a !== tool);
+    const ms = parseInterval(interval);
+    if (!ms) {
+      emitOutput(errorEnvelope(EXIT.VALIDATION_ERROR, `Invalid interval: ${interval}. Use format like 5s, 1m, 500ms`));
+      return;
+    }
+
+    // First execution
+    const opts = { ...getOpts(), serverAlias: alias };
+    const first = await invokeTool(tool, toolArgs, opts);
+    console.log(JSON.stringify(first));
+
+    // Subsequent executions
+    const timer = setInterval(async () => {
+      const result = await invokeTool(tool, toolArgs, opts);
+      console.log(JSON.stringify(result));
+    }, ms);
+
+    // Clean exit on Ctrl+C
+    process.on("SIGINT", () => {
+      clearInterval(timer);
+      process.exit(0);
+    });
+  });
+
+program
   .command("completion [shell]")
   .description("Generate shell completion script (bash or zsh)")
   .action((shell?: string) => {
@@ -315,6 +348,17 @@ program
       emitOutput(errorEnvelope(EXIT.VALIDATION_ERROR, `Unknown daemon action: ${action}. Use start, stop, status, or flush.`));
     }
   });
+
+function parseInterval(s: string): number | null {
+  const match = s.match(/^(\d+)(ms|s|m)$/);
+  if (!match) return null;
+  const [, num, unit] = match;
+  const n = parseInt(num, 10);
+  if (unit === "ms") return n;
+  if (unit === "s") return n * 1000;
+  if (unit === "m") return n * 60_000;
+  return null;
+}
 
 /**
  * Find a bare /server arg (no tool name following it) after skipping global flags.
