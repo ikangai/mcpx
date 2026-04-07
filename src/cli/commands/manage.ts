@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import type { Envelope } from "../../output/envelope.js";
 import { errorEnvelope, successResult, successEmpty, EXIT } from "../../output/envelope.js";
-import { runAlias, runAliasExec } from "../commands.js";
+import { runAlias, runAliasExec } from "../operations.js";
 import { generateBashCompletion, generateZshCompletion } from "../completion.js";
 import { runInteractive } from "../../interactive/repl.js";
 import { DaemonClient } from "../../daemon/client.js";
@@ -138,11 +138,13 @@ export function registerManageCommands(
     .command("serve")
     .description("Run mcpx as an MCP server (gateway for all registered servers)")
     .option("--port <port>", "Start HTTP server on this port (default: stdio)")
-    .action(async (opts: { port?: string }) => {
+    .option("--token <token>", "Require Bearer token for HTTP authentication")
+    .action(async (opts: { port?: string; token?: string }) => {
       const { startGateway } = await import("../../serve/gateway.js");
       await startGateway({
         verbose: program.opts().verbose,
         port: opts.port ? Number(opts.port) : undefined,
+        token: opts.token,
       });
     });
 

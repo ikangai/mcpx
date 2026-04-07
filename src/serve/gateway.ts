@@ -11,7 +11,7 @@ interface PoolEntry {
   tools: Tool[];
 }
 
-export async function startGateway(opts?: { verbose?: boolean; port?: number }): Promise<void> {
+export async function startGateway(opts?: { verbose?: boolean; port?: number; token?: string }): Promise<void> {
   const server = new McpServer({
     name: "mcpx-gateway",
     version: "0.1.0",
@@ -87,6 +87,9 @@ export async function startGateway(opts?: { verbose?: boolean; port?: number }):
   const totalTools = Array.from(pool.values()).reduce((sum, e) => sum + e.tools.length, 0);
   process.stderr.write(`mcpx gateway: ${pool.size} server(s), ${totalTools} tool(s)\n`);
 
+  // Resolve authentication token (CLI flag takes precedence over env var)
+  const token = opts?.token ?? process.env.MCPX_SERVE_TOKEN;
+
   // Graceful shutdown
   const cleanup = async () => {
     for (const [, { client }] of pool) {
@@ -98,8 +101,22 @@ export async function startGateway(opts?: { verbose?: boolean; port?: number }):
   process.on("SIGINT", cleanup);
 
   if (opts?.port) {
+    if (!token) {
+      process.stderr.write("Warning: HTTP server started without --token. Bind to localhost only.\n");
+    }
+
     // HTTP mode — simple JSON-RPC endpoint
     const httpServer = createHttpServer(async (req, res) => {
+      // Bearer token authentication
+      if (token) {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || authHeader !== `Bearer ${token}`) {
+          res.writeHead(401, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Unauthorized" }));
+          return;
+        }
+      }
+
       if (req.method === "POST" && req.url === "/mcp") {
         let body = "";
         for await (const chunk of req) body += chunk;
