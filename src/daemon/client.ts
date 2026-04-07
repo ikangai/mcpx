@@ -25,6 +25,7 @@ export class DaemonClient {
   private nextId = 1;
   private pending = new Map<number, { resolve: (v: DaemonResponse) => void; reject: (e: Error) => void }>();
   private buffer = "";
+  private knownAliases = new Set<string>();
 
   async tryConnect(): Promise<boolean> {
     const socketPath = getSocketPath();
@@ -60,7 +61,14 @@ export class DaemonClient {
 
     // Retry once after a short delay — another daemon instance may still be starting
     await new Promise((r) => setTimeout(r, 500));
-    return attemptConnect();
+    const retryResult = await attemptConnect();
+
+    // If still can't connect and socket file exists, it's stale — clean up
+    if (!retryResult && process.platform !== "win32" && existsSync(socketPath)) {
+      try { (await import("node:fs")).unlinkSync(socketPath); } catch { /* ignore */ }
+    }
+
+    return retryResult;
   }
 
   private setupDataHandler() {
@@ -133,24 +141,28 @@ export class DaemonClient {
   }
 
   async listTools(alias: string, config: ServerConfig): Promise<Tool[]> {
+    const needsConfig = !this.knownAliases.has(alias);
     const res = await this.send({
       method: "listTools",
       serverAlias: alias,
-      serverConfig: config,
+      ...(needsConfig ? { serverConfig: config } : {}),
     });
     if (res.error) throw new Error(res.error);
+    this.knownAliases.add(alias);
     return res.result as Tool[];
   }
 
   async callTool(alias: string, config: ServerConfig, name: string, args: Record<string, unknown>): Promise<unknown> {
+    const needsConfig = !this.knownAliases.has(alias);
     const res = await this.send({
       method: "callTool",
       serverAlias: alias,
-      serverConfig: config,
+      ...(needsConfig ? { serverConfig: config } : {}),
       toolName: name,
       toolArgs: args,
     });
     if (res.error) throw new Error(res.error);
+    this.knownAliases.add(alias);
     return res.result;
   }
 

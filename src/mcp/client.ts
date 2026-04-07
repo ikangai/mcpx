@@ -20,11 +20,16 @@ export class McpClient {
     });
 
     const timeout = options?.timeout ?? 30_000;
+    let timer: ReturnType<typeof setTimeout>;
     const connectPromise = this.client.connect(this.transport);
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`Connection timed out after ${timeout}ms`)), timeout)
-    );
-    await Promise.race([connectPromise, timeoutPromise]);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Connection timed out after ${timeout}ms`)), timeout);
+    });
+    try {
+      await Promise.race([connectPromise, timeoutPromise]);
+    } finally {
+      clearTimeout(timer!);
+    }
   }
 
   async listTools(): Promise<Tool[]> {

@@ -21,9 +21,15 @@ function getSocketPath(): string {
 class ConnectionPool {
   private connections = new Map<string, { client: McpClient; tools: Tool[] }>();
 
-  async getOrConnect(alias: string, config: ServerConfig): Promise<{ client: McpClient; tools: Tool[] }> {
+  has(alias: string): boolean {
+    return this.connections.has(alias);
+  }
+
+  async getOrConnect(alias: string, config?: ServerConfig): Promise<{ client: McpClient; tools: Tool[] }> {
     const existing = this.connections.get(alias);
     if (existing) return existing;
+
+    if (!config) throw new Error(`No config for alias "${alias}"`);
 
     const client = new McpClient();
     await client.connect(config, { verbose: false });
@@ -66,6 +72,7 @@ function resetIdleTimer() {
 
 function handleConnection(socket: Socket) {
   let buffer = "";
+  let processing = Promise.resolve();
 
   socket.on("data", (chunk) => {
     buffer += chunk.toString();
@@ -73,7 +80,8 @@ function handleConnection(socket: Socket) {
     while ((newlineIdx = buffer.indexOf("\n")) !== -1) {
       const line = buffer.slice(0, newlineIdx);
       buffer = buffer.slice(newlineIdx + 1);
-      handleMessage(socket, line);
+      // Queue messages to prevent concurrent pool access races
+      processing = processing.then(() => handleMessage(socket, line)).catch(() => {});
     }
   });
 
@@ -120,8 +128,8 @@ async function handleMessage(socket: Socket, rawMessage: string) {
       return;
     }
 
-    if (!req.serverConfig) {
-      respond({ id: req.id, error: "Missing serverConfig" });
+    if (!req.serverConfig && !pool.has(req.serverAlias)) {
+      respond({ id: req.id, error: "Missing serverConfig for unknown alias" });
       return;
     }
 
@@ -187,3 +195,15 @@ server.listen(socketPath, () => {
 });
 
 resetIdleTimer();
+
+// Graceful shutdown on signals (Docker stop, kill, Ctrl+C)
+async function gracefulShutdown() {
+  await pool.closeAll();
+  server.close();
+  if (process.platform !== "win32" && existsSync(socketPath)) {
+    try { unlinkSync(socketPath); } catch { /* ignore */ }
+  }
+  process.exit(0);
+}
+process.on("SIGTERM", gracefulShutdown);
+process.on("SIGINT", gracefulShutdown);

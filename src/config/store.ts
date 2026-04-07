@@ -15,16 +15,23 @@ export interface ServersFile {
   mcpServers: Record<string, ServerConfig>;
 }
 
+// In-process cache to avoid repeated disk reads within a single CLI invocation
+let cachedServers: ServersFile | null = null;
+
 export function loadServers(): ServersFile {
+  if (cachedServers) return cachedServers;
   const path = getServersPath();
   if (!existsSync(path)) {
-    return { mcpServers: {} };
+    cachedServers = { mcpServers: {} };
+    return cachedServers;
   }
   try {
     const raw = readFileSync(path, "utf-8");
-    return JSON.parse(raw) as ServersFile;
+    cachedServers = JSON.parse(raw) as ServersFile;
+    return cachedServers;
   } catch {
-    return { mcpServers: {} };
+    cachedServers = { mcpServers: {} };
+    return cachedServers;
   }
 }
 
@@ -32,6 +39,7 @@ export function saveServers(config: ServersFile): void {
   const dir = getConfigDir();
   mkdirSync(dir, { recursive: true });
   writeFileSync(getServersPath(), JSON.stringify(config, null, 2) + "\n");
+  cachedServers = config; // update cache after write
 }
 
 export function addServer(alias: string, command: string, env?: Record<string, string>): void {
