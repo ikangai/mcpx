@@ -11,18 +11,35 @@ export interface SlashCommand {
   toolArgs: string[];
 }
 
+/** Global flags that consume a following value */
+const GLOBAL_VALUE_FLAGS = new Set(["--server", "-s", "--config", "-c", "--server-name", "-n", "--timeout", "-t"]);
+
 export function parseSlashCommand(argv: string[]): SlashCommand | null {
   // Skip node and script path (argv[0], argv[1])
   const args = argv.slice(2);
 
-  if (args.length < 2) return null;
+  // Find the first positional (non-flag) arg, skipping global flags and their values
+  let slashIdx = -1;
+  for (let i = 0; i < args.length; i++) {
+    if (GLOBAL_VALUE_FLAGS.has(args[i])) {
+      i++; // skip the flag's value
+      continue;
+    }
+    if (args[i] === "--verbose" || args[i] === "-v") continue;
+    // First positional argument found
+    if (args[i].startsWith("/")) {
+      slashIdx = i;
+    }
+    break;
+  }
+  if (slashIdx === -1) return null;
 
-  const first = args[0];
-  if (!first.startsWith("/")) return null;
+  // Need at least /server and tool name
+  if (slashIdx + 1 >= args.length) return null;
 
-  const serverAlias = first.slice(1); // strip leading /
-  const toolName = args[1];
-  const toolArgs = args.slice(2);
+  const serverAlias = args[slashIdx].slice(1);
+  const toolName = args[slashIdx + 1];
+  const toolArgs = args.slice(slashIdx + 2);
 
   return { serverAlias, toolName, toolArgs };
 }

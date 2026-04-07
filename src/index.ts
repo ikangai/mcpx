@@ -22,6 +22,18 @@ import { runInteractive } from "./interactive/repl.js";
 import { output, errorEnvelope, EXIT, type Envelope } from "./output/envelope.js";
 import { DaemonClient } from "./daemon/client.js";
 
+function extractGlobalOpts(argv: string[]): { verbose?: boolean; timeout?: string } {
+  const opts: { verbose?: boolean; timeout?: string } = {};
+  const args = argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--verbose" || args[i] === "-v") opts.verbose = true;
+    if ((args[i] === "--timeout" || args[i] === "-t") && i + 1 < args.length) {
+      opts.timeout = args[i + 1];
+    }
+  }
+  return opts;
+}
+
 const program = new Command();
 
 program
@@ -178,7 +190,8 @@ const pIdx = process.argv.indexOf("-p");
 if (pIdx !== -1 && pIdx + 1 < process.argv.length) {
   const pSlash = parsePShorthand(process.argv[pIdx + 1]);
   if (pSlash) {
-    invokeTool(pSlash.toolName, pSlash.toolArgs, { serverAlias: pSlash.serverAlias })
+    const globalOpts = extractGlobalOpts(process.argv);
+    invokeTool(pSlash.toolName, pSlash.toolArgs, { serverAlias: pSlash.serverAlias, ...globalOpts })
       .then((envelope) => output(envelope))
       .catch((err) => output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message)));
   } else {
@@ -188,7 +201,8 @@ if (pIdx !== -1 && pIdx + 1 < process.argv.length) {
   // Check for slash-command pattern
   const slash = parseSlashCommand(process.argv);
   if (slash) {
-    invokeTool(slash.toolName, slash.toolArgs, { serverAlias: slash.serverAlias })
+    const globalOpts = extractGlobalOpts(process.argv);
+    invokeTool(slash.toolName, slash.toolArgs, { serverAlias: slash.serverAlias, ...globalOpts })
       .then((envelope) => output(envelope))
       .catch((err) => output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message)));
   } else {
