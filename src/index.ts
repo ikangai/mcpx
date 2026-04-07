@@ -1,4 +1,20 @@
 #!/usr/bin/env node
+import { readFileSync, existsSync } from "node:fs";
+
+// Load .env file from cwd (before any other imports read env)
+(function loadDotEnv() {
+  if (!existsSync(".env")) return;
+  for (const line of readFileSync(".env", "utf-8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const idx = trimmed.indexOf("=");
+    if (idx <= 0) continue;
+    const key = trimmed.slice(0, idx).trim();
+    const value = trimmed.slice(idx + 1).trim().replace(/^["']|["']$/g, "");
+    if (!(key in process.env)) process.env[key] = value;
+  }
+})();
+
 import { Command } from "commander";
 import { invokeTool, listTools, runAdd, runServers, runRemove, getToolSchema, runImport } from "./cli/commands.js";
 import { parseSlashCommand, parsePShorthand } from "./cli/router.js";
