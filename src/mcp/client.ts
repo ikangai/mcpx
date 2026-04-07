@@ -11,11 +11,12 @@ export class McpClient {
     this.client = new Client({ name: "mcpx", version: "0.1.0" });
   }
 
-  async connect(config: ServerConfig): Promise<void> {
+  async connect(config: ServerConfig, options?: { verbose?: boolean }): Promise<void> {
     this.transport = new StdioClientTransport({
       command: config.command,
       args: config.args,
       env: { ...process.env as Record<string, string>, ...config.env },
+      stderr: options?.verbose ? "pipe" : "ignore",
     });
     await this.client.connect(this.transport);
   }

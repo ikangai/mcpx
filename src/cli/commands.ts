@@ -49,11 +49,12 @@ function resolveServer(opts: {
 
 async function withServer<T>(
   config: ServerConfig,
-  fn: (client: McpClient, tools: Tool[]) => Promise<T>
+  fn: (client: McpClient, tools: Tool[]) => Promise<T>,
+  opts?: { verbose?: boolean }
 ): Promise<T> {
   const client = new McpClient();
   try {
-    await client.connect(config);
+    await client.connect(config, { verbose: opts?.verbose });
     const tools = await client.listTools();
     return await fn(client, tools);
   } finally {
@@ -81,6 +82,7 @@ type ServerOpts = {
   config?: string;
   serverName?: string;
   serverAlias?: string;
+  verbose?: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -181,7 +183,7 @@ export async function invokeTool(
       }
 
       return successResult(result.content);
-    });
+    }, { verbose: opts?.verbose });
   } catch (err) {
     return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
   }
@@ -213,7 +215,7 @@ export async function listTools(opts: ServerOpts): Promise<Envelope> {
           server: opts.serverAlias,
         }))
       );
-    });
+    }, { verbose: opts?.verbose });
   } catch (err) {
     return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
   }
@@ -273,7 +275,7 @@ export async function getToolSchema(
         ...tool.inputSchema,
         description: tool.description,
       } as Record<string, unknown>);
-    });
+    }, { verbose: opts?.verbose });
   } catch (err) {
     return errorEnvelope(EXIT.CONNECTION_ERROR, (err as Error).message);
   }
