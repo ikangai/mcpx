@@ -16,10 +16,22 @@ interface Workflow {
   steps: WorkflowStep[];
 }
 
+function stringify(val: unknown): string {
+  if (val === null || val === undefined) return "";
+  if (typeof val === "object") return JSON.stringify(val);
+  return String(val);
+}
+
 function interpolate(template: string, vars: Record<string, unknown>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
-    const val = vars[key];
-    return val !== undefined ? String(val) : `{{${key}}}`;
+  return template.replace(/\{\{([\w.]+)\}\}/g, (match, key) => {
+    // Support dot notation: {{user_count.user_count}} → 3
+    const parts = (key as string).split(".");
+    let val: unknown = vars;
+    for (const part of parts) {
+      if (val === null || val === undefined || typeof val !== "object") return match;
+      val = (val as Record<string, unknown>)[part];
+    }
+    return val !== undefined ? stringify(val) : match;
   });
 }
 
