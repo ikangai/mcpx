@@ -1,5 +1,8 @@
 import { Command } from "commander";
-import { McpClient } from "../mcp/client.js";
+// McpClient type is imported for signatures (erased at compile time).
+// The actual class is lazy-imported only when daemon is unavailable,
+// avoiding the 59ms MCP SDK load on the hot path.
+import type { McpClient } from "../mcp/client.js";
 import { parseServerSpec, parseConfigFile, type ServerConfig } from "../mcp/config.js";
 import { addToolFlags, parseToolArgs } from "./flags.js";
 import type { JsonSchema } from "../utils/schema.js";
@@ -66,7 +69,7 @@ async function withServer<T>(
             callTool: async (name: string, args: Record<string, unknown>) => {
               return daemon.callTool(opts.serverAlias!, config, name, args);
             },
-          } as McpClient;
+          } as unknown as McpClient;
           return await fn(proxyClient, tools);
         } finally {
           daemon.close();
@@ -77,8 +80,9 @@ async function withServer<T>(
     }
   }
 
-  // Direct connection fallback
-  const client = new McpClient();
+  // Direct connection fallback — lazy-import MCP SDK (59ms savings on daemon path)
+  const { McpClient: McpClientClass } = await import("../mcp/client.js");
+  const client = new McpClientClass();
   try {
     await client.connect(config, { verbose: opts?.verbose, timeout: opts?.timeout });
     const tools = await client.listTools();

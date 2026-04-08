@@ -1,4 +1,4 @@
-import { McpClient } from "../mcp/client.js";
+import type { McpClient } from "../mcp/client.js";
 import type { ServerConfig } from "../mcp/config.js";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -31,7 +31,8 @@ async function withDirectClient<T>(
   fn: (client: McpClient) => Promise<T>
 ): Promise<T> {
   const serverConfig = resolveServer(opts);
-  const client = new McpClient();
+  const { McpClient: McpClientClass } = await import("../mcp/client.js");
+  const client = new McpClientClass();
   try {
     await client.connect(serverConfig, { verbose: opts?.verbose, timeout: opts?.timeout });
     return await fn(client);
