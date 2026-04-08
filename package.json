@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
+    "bench": "node --import tsx scripts/bench-mcp-vs-mcpx.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build && npm test"

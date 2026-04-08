@@ -220,6 +220,7 @@ mcpx skills /pg > SKILL-pg.md
 npm run build        # Compile TypeScript
 npm run dev          # Run via tsx
 npm test             # Run all tests
+npm run bench        # Benchmark direct MCP vs mcpx
 ```
 
 ## License
