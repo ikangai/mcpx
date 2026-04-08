@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Documentation
+
+- Added comprehensive MCP vs mcpx evaluation guide (`docs/mcp-vs-mcpx-eval.md`) with latency benchmarks, token-budget estimates, and reproducible manual eval
+- Improved eval doc portability: replaced hardcoded paths with `$REPO` / `<REPO>` placeholders, added quick-start one-liner, condensed sandbox caveats, flagged token estimates as order-of-magnitude
+
 ## [0.1.0] - 2026-04-08
 
 Initial public release.
