@@ -1,6 +1,7 @@
 import { Command } from "commander";
+import { createInterface } from "node:readline";
 import type { Envelope } from "../../output/envelope.js";
-import { errorEnvelope, EXIT } from "../../output/envelope.js";
+import { errorEnvelope, EXIT, successResult } from "../../output/envelope.js";
 import { invokeTool, listTools, getToolSchema } from "../commands.js";
 import type { ServerOpts } from "../commands.js";
 
@@ -87,5 +88,45 @@ Examples:
         clearInterval(timer);
         process.exit(0);
       });
+    });
+
+  program
+    .command("batch <server>")
+    .description("Execute multiple tools from NDJSON stdin (one {tool,params} per line)")
+    .addHelpText("after", `
+Reads NDJSON from stdin, each line: {"tool":"name","params":{...}}
+Outputs one JSON result per line (NDJSON).
+
+Example:
+  echo '{"tool":"echo","params":{"message":"hello"}}
+{"tool":"get-sum","params":{"a":1,"b":2}}' | mcpx batch /everything
+
+Saves API roundtrips when an agent needs multiple tool calls.
+`)
+    .action(async (server: string) => {
+      const alias = server.startsWith("/") ? server.slice(1) : server;
+      const opts = { ...getOpts(), serverAlias: alias };
+
+      const rl = createInterface({ input: process.stdin, terminal: false });
+
+      for await (const line of rl) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+
+        try {
+          const req = JSON.parse(trimmed) as { tool: string; params?: Record<string, unknown> };
+          if (!req.tool) {
+            console.log(JSON.stringify({ ok: false, error: { code: 3, message: "Missing 'tool' field" } }));
+            continue;
+          }
+          const toolArgs = req.params ? ["--params", JSON.stringify(req.params)] : [];
+          const envelope = await invokeTool(req.tool, toolArgs, opts);
+          console.log(JSON.stringify(envelope));
+        } catch (err) {
+          console.log(JSON.stringify({ ok: false, error: { code: 5, message: (err as Error).message } }));
+        }
+      }
+
+      process.exit(0);
     });
 }

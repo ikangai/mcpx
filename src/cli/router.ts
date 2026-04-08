@@ -27,7 +27,7 @@ export function parseSlashCommand(argv: string[]): SlashCommand | null {
       i++; // skip the flag's value
       continue;
     }
-    if (args[i] === "--verbose" || args[i] === "-v") continue;
+    if (args[i] === "--verbose" || args[i] === "-v" || args[i] === "--raw") continue;
     // First positional argument found
     if (args[i].startsWith("/")) {
       slashIdx = i;

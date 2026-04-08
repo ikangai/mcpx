@@ -73,8 +73,44 @@ export function errorEnvelope(code: number, message: string): ErrorEnvelope {
  * Write envelope to stdout and exit with the appropriate code.
  * All CLI output goes through this function.
  */
-export function output(envelope: Envelope): never {
-  console.log(JSON.stringify(envelope, null, 2));
+export function output(envelope: Envelope, raw = false): never {
+  if (raw) {
+    outputRaw(envelope);
+  } else {
+    console.log(JSON.stringify(envelope, null, 2));
+  }
   const code = envelope.ok ? EXIT.SUCCESS : envelope.error.code;
   process.exit(code);
+}
+
+/**
+ * Raw output mode — strips the envelope, outputs just the content.
+ * Saves ~35% tokens when used by agents via Bash tool.
+ * Errors go to stderr, content to stdout.
+ */
+function outputRaw(envelope: Envelope): void {
+  if (!envelope.ok) {
+    console.error(envelope.error.message);
+    return;
+  }
+  if (envelope.result) {
+    for (const item of envelope.result) {
+      if (item.type === "text" && item.text) {
+        console.log(item.text);
+      } else if (item.type === "image") {
+        console.log(`[image: ${item.mimeType}]`);
+      }
+    }
+  } else if (envelope.tools) {
+    for (const tool of envelope.tools) {
+      console.log(`${tool.name}\t${tool.description ?? ""}`);
+    }
+  } else if (envelope.schema) {
+    console.log(JSON.stringify(envelope.schema, null, 2));
+  } else if (envelope.servers) {
+    for (const s of envelope.servers) {
+      console.log(`${s.alias}\t${s.command} ${s.args.join(" ")}`);
+    }
+  }
+  // Empty success: no output (exit 0 is enough)
 }

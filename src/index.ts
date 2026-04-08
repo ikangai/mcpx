@@ -47,11 +47,12 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import YAML from "yaml";
 import { registerCommands } from "./cli/register.js";
 
-function extractGlobalOpts(argv: string[]): { verbose?: boolean; timeout?: number; format?: string } {
-  const opts: { verbose?: boolean; timeout?: number; format?: string } = {};
+function extractGlobalOpts(argv: string[]): { verbose?: boolean; timeout?: number; format?: string; raw?: boolean } {
+  const opts: { verbose?: boolean; timeout?: number; format?: string; raw?: boolean } = {};
   const args = argv.slice(2);
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--verbose" || args[i] === "-v") opts.verbose = true;
+    if (args[i] === "--raw") opts.raw = true;
     if ((args[i] === "--timeout" || args[i] === "-t") && i + 1 < args.length) {
       opts.timeout = Number(args[i + 1]);
     }
@@ -77,6 +78,12 @@ function getOpts(): import("./cli/commands.js").ServerOpts {
  * When --format is json or omitted, emit the raw JSON envelope (agent-facing).
  */
 function emitOutput(envelope: Envelope, formatOverride?: string): never {
+  // --raw: strip envelope, output just content (saves tokens for agents)
+  const isRaw = formatOverride === "raw" || program.opts().raw;
+  if (isRaw) {
+    return output(envelope, true);
+  }
+
   const fmt = formatOverride ?? program.opts().format;
   if (fmt && fmt !== "json") {
     if (!envelope.ok) {
@@ -129,7 +136,7 @@ function parseInterval(s: string): number | null {
 function findBareServer(args: string[]): string | null {
   for (let i = 0; i < args.length; i++) {
     if (GLOBAL_VALUE_FLAGS.has(args[i])) { i++; continue; }
-    if (args[i] === "--verbose" || args[i] === "-v") continue;
+    if (args[i] === "--verbose" || args[i] === "-v" || args[i] === "--raw") continue;
     if (args[i].startsWith("/")) return args[i].slice(1);
     break;
   }
@@ -153,7 +160,8 @@ program
   .option("-t, --timeout <ms>", "Connection timeout in milliseconds", "30000")
   .option("-f, --format <format>", "Output format: json | table | yaml")
   .option("--config-dir <path>", "Override config directory (default: ~/.config/mcpx)")
-  .option("--log <path>", "Append tool invocations to NDJSON log file");
+  .option("--log <path>", "Append tool invocations to NDJSON log file")
+  .option("--raw", "Output raw content without JSON envelope (saves tokens for agents)");
 
 registerCommands(program, emitOutput, getOpts, parseInterval);
 
@@ -169,9 +177,10 @@ if (pIdx !== -1 && pIdx + 1 >= process.argv.length) {
   const pSlash = parsePShorthand(process.argv[pIdx + 1]);
   if (pSlash) {
     const globalOpts = extractGlobalOpts(process.argv);
+    const fmt = globalOpts.raw ? "raw" : globalOpts.format;
     invokeTool(pSlash.toolName, pSlash.toolArgs, { serverAlias: pSlash.serverAlias, ...globalOpts })
-      .then((envelope) => emitOutput(envelope, globalOpts.format))
-      .catch((err) => emitOutput(errorEnvelope(EXIT.INTERNAL_ERROR, err.message), globalOpts.format));
+      .then((envelope) => emitOutput(envelope, fmt))
+      .catch((err) => emitOutput(errorEnvelope(EXIT.INTERNAL_ERROR, err.message), fmt));
   } else {
     output(errorEnvelope(EXIT.VALIDATION_ERROR, "Invalid -p format. Expected: /server tool [--params '{}']"));
   }
@@ -180,17 +189,19 @@ if (pIdx !== -1 && pIdx + 1 >= process.argv.length) {
   const slash = parseSlashCommand(process.argv);
   if (slash) {
     const globalOpts = extractGlobalOpts(process.argv);
+    const fmt = globalOpts.raw ? "raw" : globalOpts.format;
     invokeTool(slash.toolName, slash.toolArgs, { serverAlias: slash.serverAlias, ...globalOpts })
-      .then((envelope) => emitOutput(envelope, globalOpts.format))
-      .catch((err) => emitOutput(errorEnvelope(EXIT.INTERNAL_ERROR, err.message), globalOpts.format));
+      .then((envelope) => emitOutput(envelope, fmt))
+      .catch((err) => emitOutput(errorEnvelope(EXIT.INTERNAL_ERROR, err.message), fmt));
   } else {
     // Check for bare /server (no tool name) — treat as list
     const bareServer = findBareServer(process.argv.slice(2));
     if (bareServer) {
       const globalOpts = extractGlobalOpts(process.argv);
+      const fmt = globalOpts.raw ? "raw" : globalOpts.format;
       listTools({ ...globalOpts, serverAlias: bareServer })
-        .then((envelope) => emitOutput(envelope, globalOpts.format))
-        .catch((err) => emitOutput(errorEnvelope(EXIT.INTERNAL_ERROR, err.message), globalOpts.format));
+        .then((envelope) => emitOutput(envelope, fmt))
+        .catch((err) => emitOutput(errorEnvelope(EXIT.INTERNAL_ERROR, err.message), fmt));
     } else {
       program.parseAsync().catch((err) => {
         output(errorEnvelope(EXIT.INTERNAL_ERROR, err.message));
