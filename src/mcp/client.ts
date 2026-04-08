@@ -1,27 +1,86 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { ServerConfig } from "./config.js";
 
+export function resolveTransportType(config: ServerConfig): "stdio" | "sse" | "http" {
+  if (config.transport) return config.transport;
+  if (config.url) return "http";
+  return "stdio";
+}
+
 export class McpClient {
   private client: Client;
-  private transport: StdioClientTransport | null = null;
+  private transport: Transport | null = null;
 
   constructor() {
     this.client = new Client({ name: "mcpx", version: "0.1.0" });
   }
 
   async connect(config: ServerConfig, options?: { verbose?: boolean; timeout?: number }): Promise<void> {
-    this.transport = new StdioClientTransport({
-      command: config.command,
-      args: config.args,
-      env: { ...process.env as Record<string, string>, ...config.env },
-      stderr: options?.verbose ? "pipe" : "ignore",
-    });
+    const transportType = resolveTransportType(config);
+
+    if (transportType === "stdio") {
+      const { StdioClientTransport } = await import("@modelcontextprotocol/sdk/client/stdio.js");
+      this.transport = new StdioClientTransport({
+        command: config.command!,
+        args: config.args ?? [],
+        env: { ...process.env as Record<string, string>, ...config.env },
+        stderr: options?.verbose ? "pipe" : "ignore",
+      });
+    } else if (transportType === "http") {
+      const { StreamableHTTPClientTransport } = await import("@modelcontextprotocol/sdk/client/streamableHttp.js");
+      const requestInit: RequestInit = {};
+      const headers: Record<string, string> = { ...config.headers };
+
+      if (Object.keys(headers).length > 0) {
+        requestInit.headers = headers;
+      }
+
+      const transportOpts: Record<string, unknown> = { requestInit };
+
+      if (config.oauth) {
+        const { ClientCredentialsProvider } = await import("@modelcontextprotocol/sdk/client/auth-extensions.js");
+        transportOpts.authProvider = new ClientCredentialsProvider({
+          clientId: config.oauth.clientId,
+          clientSecret: config.oauth.clientSecret,
+          scope: config.oauth.scope,
+        });
+      }
+
+      this.transport = new StreamableHTTPClientTransport(
+        new URL(config.url!),
+        transportOpts,
+      );
+    } else if (transportType === "sse") {
+      const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
+      const requestInit: RequestInit = {};
+      const headers: Record<string, string> = { ...config.headers };
+
+      if (Object.keys(headers).length > 0) {
+        requestInit.headers = headers;
+      }
+
+      const transportOpts: Record<string, unknown> = { requestInit };
+
+      if (config.oauth) {
+        const { ClientCredentialsProvider } = await import("@modelcontextprotocol/sdk/client/auth-extensions.js");
+        transportOpts.authProvider = new ClientCredentialsProvider({
+          clientId: config.oauth.clientId,
+          clientSecret: config.oauth.clientSecret,
+          scope: config.oauth.scope,
+        });
+      }
+
+      this.transport = new SSEClientTransport(
+        new URL(config.url!),
+        transportOpts,
+      );
+    }
 
     const timeout = options?.timeout ?? 30_000;
     let timer: ReturnType<typeof setTimeout>;
-    const connectPromise = this.client.connect(this.transport);
+    const connectPromise = this.client.connect(this.transport!);
     const timeoutPromise = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error(`Connection timed out after ${timeout}ms`)), timeout);
     });
