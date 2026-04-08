@@ -1,7 +1,7 @@
 {
   "name": "mcpx",
   "version": "0.1.0",
-  "description": "Transform MCP servers into CLI commands",
+  "description": "One CLI for any MCP server — built for humans and AI agents",
   "type": "module",
   "bin": {
     "mcpx": "./dist/index.js"
@@ -10,25 +10,43 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm test"
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/__tests__"
   ],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "cli",
+    "ai",
+    "agent",
+    "llm",
+    "tool"
+  ],
+  "author": "Martin Treiber",
   "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "@inquirer/prompts": "^8.3.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "chalk": "^5.6.2",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.3",
-    "yaml": "^2.8.3",
+    "yaml": "^2.8.3"
+  },
+  "optionalDependencies": {
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.2",
+    "zod": "^4.3.6"
   }
 }

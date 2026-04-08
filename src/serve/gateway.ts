@@ -4,7 +4,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { McpClient } from "../mcp/client.js";
 import { getAllServers } from "../config/store.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { z } from "zod";
+// zod is an optional dependency — only needed for stdio gateway mode
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let z: any;
 
 interface PoolEntry {
   client: McpClient;
@@ -12,6 +14,13 @@ interface PoolEntry {
 }
 
 export async function startGateway(opts?: { verbose?: boolean; port?: number; token?: string }): Promise<void> {
+  try {
+    z = await import("zod");
+  } catch {
+    process.stderr.write("Error: 'zod' is required for mcpx serve. Install it: npm install zod\n");
+    process.exit(1);
+  }
+
   const server = new McpServer({
     name: "mcpx-gateway",
     version: "0.1.0",
@@ -37,11 +46,11 @@ export async function startGateway(opts?: { verbose?: boolean; port?: number; to
         };
 
         // Build zod schema from JSON schema properties
-        const zodProps: Record<string, z.ZodTypeAny> = {};
+        const zodProps: Record<string, unknown> = {};
         const props = schema.properties ?? {};
         for (const [propName, propSchema] of Object.entries(props)) {
           const p = propSchema as { type?: string; description?: string };
-          let zodType: z.ZodTypeAny;
+          let zodType: any;
           switch (p.type) {
             case "string": zodType = z.string(); break;
             case "number": case "integer": zodType = z.number(); break;
