@@ -45,9 +45,14 @@ async function withDirectClient<T>(
 // Server CRUD
 // ---------------------------------------------------------------------------
 
-export async function runAdd(alias: string, command: string, env?: Record<string, string>): Promise<Envelope> {
+export async function runAdd(
+  alias: string,
+  command: string,
+  env?: Record<string, string>,
+  httpOpts?: { url?: string; transport?: "stdio" | "sse" | "http"; headers?: Record<string, string>; oauth?: { clientId: string; clientSecret: string; scope?: string } },
+): Promise<Envelope> {
   try {
-    addServer(alias, command, env);
+    addServer(alias, command, env, httpOpts);
     return successEmpty();
   } catch (err) {
     return errorEnvelope(EXIT.CONFIG_ERROR, (err as Error).message);
@@ -58,9 +63,12 @@ export async function runServers(): Promise<Envelope> {
   const servers = getAllServers();
   const list = Object.entries(servers).map(([alias, config]) => ({
     alias,
-    command: config.command,
-    args: config.args,
+    ...(config.url
+      ? { url: config.url, transport: config.transport ?? "http" }
+      : { command: config.command, args: config.args }),
     env: config.env,
+    headers: config.headers ? "(set)" : undefined,
+    oauth: config.oauth ? "(configured)" : undefined,
   }));
   return successServers(list);
 }

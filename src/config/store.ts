@@ -47,13 +47,28 @@ export function saveServers(config: ServersFile): void {
   cachedServers = config; // update cache after write
 }
 
-export function addServer(alias: string, command: string, env?: Record<string, string>): void {
+export function addServer(
+  alias: string,
+  command: string,
+  env?: Record<string, string>,
+  httpOpts?: { url?: string; transport?: "stdio" | "sse" | "http"; headers?: Record<string, string>; oauth?: { clientId: string; clientSecret: string; scope?: string } },
+): void {
   if (!alias.trim()) throw new Error("Server alias cannot be empty");
-  if (!command.trim()) throw new Error("Server command cannot be empty");
   const config = loadServers();
-  const parts = command.split(/\s+/).filter(Boolean);
-  const server: ServerConfig = { command: parts[0], args: parts.slice(1) };
-  if (env && Object.keys(env).length > 0) server.env = env;
+  let server: ServerConfig;
+
+  if (httpOpts?.url) {
+    server = { url: httpOpts.url };
+    if (httpOpts.transport) server.transport = httpOpts.transport;
+    if (httpOpts.headers && Object.keys(httpOpts.headers).length > 0) server.headers = httpOpts.headers;
+    if (httpOpts.oauth) server.oauth = httpOpts.oauth;
+  } else {
+    if (!command.trim()) throw new Error("Server command cannot be empty");
+    const parts = command.split(/\s+/).filter(Boolean);
+    server = { command: parts[0], args: parts.slice(1) };
+    if (env && Object.keys(env).length > 0) server.env = env;
+  }
+
   config.mcpServers[alias] = server;
   saveServers(config);
 }
