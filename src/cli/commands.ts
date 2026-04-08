@@ -116,6 +116,9 @@ export function friendlyError(err: Error, serverConfig?: ServerConfig): string {
   if (msg.includes("ECONNREFUSED")) return "Connection refused. Is the server running?";
   if (msg.includes("timed out")) return "Connection timed out. Try increasing --timeout.";
   if (msg.includes("EACCES")) return "Permission denied. Check file permissions.";
+  if (msg.includes("401") || msg.includes("Unauthorized")) return "Authentication failed. Check your token or OAuth credentials.";
+  if (msg.includes("403") || msg.includes("Forbidden")) return "Access denied. Check your permissions.";
+  if (msg.includes("fetch failed") || msg.includes("ENOTFOUND")) return "Could not reach server. Check the URL.";
   return msg;
 }
 
