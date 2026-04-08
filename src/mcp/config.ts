@@ -1,7 +1,22 @@
 export interface ServerConfig {
-  command: string;
-  args: string[];
+  // Stdio transport (existing)
+  command?: string;
+  args?: string[];
   env?: Record<string, string>;
+
+  // HTTP/SSE transport (new)
+  url?: string;
+  transport?: "stdio" | "sse" | "http";
+  headers?: Record<string, string>;
+  oauth?: {
+    clientId: string;
+    clientSecret: string;
+    scope?: string;
+  };
+}
+
+export function isHttpServer(config: ServerConfig): boolean {
+  return !!config.url;
 }
 
 export interface McpxConfig {

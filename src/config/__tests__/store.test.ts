@@ -73,4 +73,38 @@ describe("config store", () => {
     expect(Object.keys(all)).toContain("a");
     expect(Object.keys(all)).toContain("b");
   });
+
+  it("stores url-based server config", async () => {
+    const { addServer, getServer } = await import("../store.js");
+    addServer("api", "https://mcp.example.com/v1", undefined, {
+      url: "https://mcp.example.com/v1",
+      headers: { "Authorization": "Bearer sk-xxx" },
+    });
+    const server = getServer("api");
+    expect(server?.url).toBe("https://mcp.example.com/v1");
+    expect(server?.headers?.["Authorization"]).toBe("Bearer sk-xxx");
+  });
+
+  it("stores url-based server with oauth config", async () => {
+    const { addServer, getServer } = await import("../store.js");
+    addServer("oauth-api", "https://mcp.example.com/v1", undefined, {
+      url: "https://mcp.example.com/v1",
+      oauth: { clientId: "my-id", clientSecret: "my-secret", scope: "read write" },
+    });
+    const server = getServer("oauth-api");
+    expect(server?.url).toBe("https://mcp.example.com/v1");
+    expect(server?.oauth?.clientId).toBe("my-id");
+    expect(server?.oauth?.scope).toBe("read write");
+  });
+
+  it("stores url-based server with explicit transport", async () => {
+    const { addServer, getServer } = await import("../store.js");
+    addServer("sse-api", "https://mcp.example.com/sse", undefined, {
+      url: "https://mcp.example.com/sse",
+      transport: "sse",
+    });
+    const server = getServer("sse-api");
+    expect(server?.url).toBe("https://mcp.example.com/sse");
+    expect(server?.transport).toBe("sse");
+  });
 });

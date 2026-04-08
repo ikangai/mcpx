@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseServerSpec, parseConfigFile } from "../config.js";
+import { parseServerSpec, parseConfigFile, isHttpServer } from "../config.js";
 
 describe("parseServerSpec", () => {
   it("parses a simple command string", () => {
@@ -83,5 +83,15 @@ describe("parseConfigFile", () => {
       },
     };
     expect(() => parseConfigFile(config, "missing")).toThrow("not found");
+  });
+});
+
+describe("isHttpServer", () => {
+  it("returns true for url-based config", () => {
+    expect(isHttpServer({ url: "https://mcp.example.com" })).toBe(true);
+  });
+
+  it("returns false for stdio config", () => {
+    expect(isHttpServer({ command: "npx", args: ["server"] })).toBe(false);
   });
 });

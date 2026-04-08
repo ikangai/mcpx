@@ -34,7 +34,7 @@ mcpx /weather get-forecast --city Berlin
 
 | Command | Description |
 |---------|-------------|
-| `mcpx add <alias> <cmd>` | Register an MCP server |
+| `mcpx add <alias> <cmd-or-url>` | Register an MCP server (stdio or HTTP) |
 | `mcpx remove <alias>` | Remove a registered server |
 | `mcpx servers` | List registered servers |
 | `mcpx list [/server]` | List available tools |
@@ -125,6 +125,47 @@ mcpx add pg "npx @toolbox-sdk/server --prebuilt=postgres --stdio" \
 
 # Import from Claude Desktop
 mcpx import
+```
+
+## Authentication
+
+mcpx supports multiple authentication methods for remote MCP servers:
+
+### Static Bearer Token
+
+```bash
+mcpx add api "https://mcp.example.com/v1" \
+  -H "Authorization: Bearer sk-your-token"
+```
+
+### Custom Headers
+
+```bash
+mcpx add api "https://mcp.example.com/v1" \
+  -H "X-API-Key: your-key" \
+  -H "X-Org-Id: org-123"
+```
+
+### OAuth Client Credentials
+
+```bash
+mcpx add api "https://mcp.example.com/v1" \
+  --oauth-client-id your-client-id \
+  --oauth-client-secret your-secret \
+  --oauth-scope "read write"
+```
+
+### SSE Transport
+
+```bash
+mcpx add api "https://mcp.example.com/sse" --transport sse
+```
+
+### Stdio with Environment Variables (existing)
+
+```bash
+mcpx add pg "npx @mcp/server-postgres" \
+  -e POSTGRES_PASSWORD=secret
 ```
 
 ## Connection Daemon

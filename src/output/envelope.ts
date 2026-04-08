@@ -1,8 +1,12 @@
 export interface ServerInfo {
   alias: string;
-  command: string;
-  args: string[];
+  command?: string;
+  args?: string[];
   env?: Record<string, string>;
+  url?: string;
+  transport?: string;
+  headers?: string;
+  oauth?: string;
 }
 
 export interface SuccessEnvelope {
@@ -109,7 +113,7 @@ function outputRaw(envelope: Envelope): void {
     console.log(JSON.stringify(envelope.schema, null, 2));
   } else if (envelope.servers) {
     for (const s of envelope.servers) {
-      console.log(`${s.alias}\t${s.command} ${s.args.join(" ")}`);
+      console.log(`${s.alias}\t${s.url ?? `${s.command ?? ""} ${(s.args ?? []).join(" ")}`}`);
     }
   }
   // Empty success: no output (exit 0 is enough)

@@ -5,9 +5,17 @@ export interface DaemonRequest {
   method: "listTools" | "callTool" | "ping" | "shutdown" | "flush";
   serverAlias: string;
   serverConfig?: {
-    command: string;
-    args: string[];
+    command?: string;
+    args?: string[];
     env?: Record<string, string>;
+    url?: string;
+    transport?: "stdio" | "sse" | "http";
+    headers?: Record<string, string>;
+    oauth?: {
+      clientId: string;
+      clientSecret: string;
+      scope?: string;
+    };
   };
   toolName?: string;
   toolArgs?: Record<string, unknown>;
