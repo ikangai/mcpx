@@ -259,7 +259,7 @@ mcpx skills /pg > SKILL-pg.md
 
 A detailed comparison of direct MCP usage vs `mcpx` is available in [`docs/mcp-vs-mcpx-eval.md`](docs/mcp-vs-mcpx-eval.md). It covers:
 
-- Automated test coverage (84 scenario checks across 7 test files)
+- Automated test coverage (430 tests across 49 test files)
 - Latency benchmarks (direct MCP vs `mcpx` inline vs daemon-cached)
 - Token-budget estimates for agent consumption
 - A reproducible manual eval you can run end-to-end

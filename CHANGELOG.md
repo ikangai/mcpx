@@ -4,8 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Features
+
+- **HTTP/SSE transport** -- connect to remote MCP servers over HTTP (Streamable HTTP) and SSE, not just stdio
+- **Authentication** -- static Bearer tokens via `-H` header flag, custom headers, and OAuth client_credentials flow via `--oauth-*` flags
+- **Transport selection** -- auto-detects HTTP vs stdio from URL; explicit `--transport sse|http|stdio` override available
+- **Friendly HTTP errors** -- 401/403/network failures produce actionable messages instead of raw errors
+
 ### Documentation
 
+- Added Authentication section to README with examples for Bearer tokens, custom headers, OAuth, and SSE transport
 - Added comprehensive MCP vs mcpx evaluation guide (`docs/mcp-vs-mcpx-eval.md`) with latency benchmarks, token-budget estimates, and reproducible manual eval
 - Improved eval doc portability: replaced hardcoded paths with `$REPO` / `<REPO>` placeholders, added quick-start one-liner, condensed sandbox caveats, flagged token estimates as order-of-magnitude
 
