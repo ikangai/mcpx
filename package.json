@@ -4,7 +4,8 @@
   "description": "One CLI for any MCP server — built for humans and AI agents",
   "type": "module",
   "bin": {
-    "mcpx": "./dist/index.js"
+    "mcpx": "./dist/index.js",
+    "mx": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",

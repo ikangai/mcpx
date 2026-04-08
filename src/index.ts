@@ -52,7 +52,7 @@ function extractGlobalOpts(argv: string[]): { verbose?: boolean; timeout?: numbe
   const args = argv.slice(2);
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--verbose" || args[i] === "-v") opts.verbose = true;
-    if (args[i] === "--raw") opts.raw = true;
+    if (args[i] === "--raw" || args[i] === "-r") opts.raw = true;
     if ((args[i] === "--timeout" || args[i] === "-t") && i + 1 < args.length) {
       opts.timeout = Number(args[i + 1]);
     }
@@ -136,7 +136,7 @@ function parseInterval(s: string): number | null {
 function findBareServer(args: string[]): string | null {
   for (let i = 0; i < args.length; i++) {
     if (GLOBAL_VALUE_FLAGS.has(args[i])) { i++; continue; }
-    if (args[i] === "--verbose" || args[i] === "-v" || args[i] === "--raw") continue;
+    if (args[i] === "--verbose" || args[i] === "-v" || args[i] === "--raw" || args[i] === "-r") continue;
     if (args[i].startsWith("/")) return args[i].slice(1);
     break;
   }
@@ -161,7 +161,7 @@ program
   .option("-f, --format <format>", "Output format: json | table | yaml")
   .option("--config-dir <path>", "Override config directory (default: ~/.config/mcpx)")
   .option("--log <path>", "Append tool invocations to NDJSON log file")
-  .option("--raw", "Output raw content without JSON envelope (saves tokens for agents)");
+  .option("-r, --raw", "Output raw content without JSON envelope (saves tokens for agents)");
 
 registerCommands(program, emitOutput, getOpts, parseInterval);
 
