@@ -6,6 +6,7 @@ import { McpClient } from "../mcp/client.js";
 import type { ServerConfig } from "../mcp/config.js";
 import { DAEMON_PROTOCOL_VERSION, type DaemonRequest, type DaemonResponse } from "./protocol.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { AnnotatedTool } from "../mcp/types.js";
 
 const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
@@ -196,8 +197,8 @@ async function handleMessage(socket: Socket, rawMessage: string) {
 
     if (req.method === "callTool") {
       // Check cache for idempotent/read-only tools
-      const tool = toolIndex.get(req.toolName!);
-      const annotations = (tool as any)?.annotations;
+      const tool = toolIndex.get(req.toolName!) as AnnotatedTool | undefined;
+      const annotations = tool?.annotations;
       const cacheable = annotations?.readOnlyHint || annotations?.idempotentHint;
 
       if (cacheable) {

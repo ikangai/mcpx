@@ -12,6 +12,7 @@ import { logInvocation } from "../audit/logger.js";
 import { runHooks } from "../hooks/runner.js";
 import { DaemonClient } from "../daemon/client.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { AnnotatedTool } from "../mcp/types.js";
 import {
   type Envelope,
   successTools,
@@ -239,13 +240,7 @@ export async function invokeTool(
         lines.push("  --dry-run           Preview without executing");
 
         // Show tool annotations if present
-        const annotations = (tool as any).annotations as {
-          title?: string;
-          readOnlyHint?: boolean;
-          destructiveHint?: boolean;
-          idempotentHint?: boolean;
-          openWorldHint?: boolean;
-        } | undefined;
+        const annotations = (tool as AnnotatedTool).annotations;
         if (annotations) {
           const hints: string[] = [];
           if (annotations.destructiveHint) hints.push("destructive");
@@ -393,7 +388,7 @@ export async function listTools(opts: ServerOpts): Promise<Envelope> {
           description: t.description,
           inputSchema: t.inputSchema as Record<string, unknown>,
           server: opts.serverAlias,
-          annotations: (t as any).annotations,
+          annotations: (t as AnnotatedTool).annotations,
         }))
       );
     }, { verbose: opts?.verbose, timeout: opts?.timeout, serverAlias: opts?.serverAlias });
@@ -417,7 +412,7 @@ async function listAllServers(opts?: ServerOpts): Promise<Envelope> {
           description: t.description,
           inputSchema: t.inputSchema as Record<string, unknown>,
           server: alias,
-          annotations: (t as any).annotations,
+          annotations: (t as AnnotatedTool).annotations,
         }));
       }, { verbose: opts?.verbose, timeout: opts?.timeout, serverAlias: alias });
     })

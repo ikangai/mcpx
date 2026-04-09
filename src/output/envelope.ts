@@ -31,12 +31,15 @@ export interface ContentItem {
   mimeType?: string;
 }
 
+export type { ToolAnnotations } from "../mcp/types.js";
+import type { ToolAnnotations } from "../mcp/types.js";
+
 export interface ToolInfo {
   name: string;
   description?: string;
   inputSchema: Record<string, unknown>;
   server?: string;
-  annotations?: Record<string, unknown>;
+  annotations?: ToolAnnotations;
 }
 
 /** Exit codes matching gws convention */

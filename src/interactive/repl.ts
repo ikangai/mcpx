@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { McpClient } from "../mcp/client.js";
 import { formatResult, detectFormat } from "../output/formatter.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { AnnotatedTool } from "../mcp/types.js";
 import { resolveServer, ConfigError } from "../cli/commands.js";
 
 async function promptForArgs(
@@ -119,7 +120,7 @@ export async function runInteractive(globalOpts: {
                 )
               : tools;
             return filtered.map((t) => {
-              const annotations = (t as any).annotations;
+              const annotations = (t as AnnotatedTool).annotations;
               let suffix = "";
               if (annotations?.destructiveHint) suffix += " \u26a0 destructive";
               if (annotations?.readOnlyHint) suffix += " \ud83d\udd12 read-only";

@@ -1,4 +1,5 @@
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { AnnotatedTool } from "../mcp/types.js";
 
 interface JsonSchemaProperty {
   type?: string;
@@ -35,12 +36,7 @@ export function generateSkill(alias: string, tools: Tool[]): string {
     const schema = tool.inputSchema as JsonSchemaObj;
     const props = schema.properties ?? {};
     const required = new Set(schema.required ?? []);
-    const annotations = (tool as any).annotations as {
-      readOnlyHint?: boolean;
-      destructiveHint?: boolean;
-      idempotentHint?: boolean;
-      openWorldHint?: boolean;
-    } | undefined;
+    const annotations = (tool as AnnotatedTool).annotations;
 
     lines.push(`### ${tool.name}`);
     lines.push("");
