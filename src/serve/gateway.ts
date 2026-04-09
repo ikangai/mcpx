@@ -65,12 +65,14 @@ export async function startGateway(opts?: { verbose?: boolean; port?: number; to
     })
   );
 
-  for (const result of results) {
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i];
     if (result.status === "fulfilled") {
       const { alias, client, tools, config } = result.value;
       pool.set(alias, { client, tools, config });
     } else if (opts?.verbose) {
-      process.stderr.write(`Warning: Failed to connect to server: ${result.reason}\n`);
+      const alias = entries[i][0];
+      process.stderr.write(`Warning: Failed to connect to ${alias}: ${result.reason}\n`);
     }
   }
 

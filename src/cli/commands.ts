@@ -154,6 +154,7 @@ export async function invokeTool(
 
   try {
     return await withServer(serverConfig, async (client, tools) => {
+      // Map lookup for consistency with daemon path (daemon stores persistent toolIndex)
       const toolIndex = new Map(tools.map(t => [t.name, t]));
       const tool = toolIndex.get(toolName);
       if (!tool) {

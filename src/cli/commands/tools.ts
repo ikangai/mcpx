@@ -167,9 +167,11 @@ Saves API roundtrips when an agent needs multiple tool calls.
             }
           });
 
-          const chunkResults = await Promise.all(promises);
+          const chunkResults = await Promise.allSettled(promises);
           for (const r of chunkResults) {
-            results[r.index] = r.output;
+            if (r.status === "fulfilled") {
+              results[r.value.index] = r.value.output;
+            }
           }
         }
 
