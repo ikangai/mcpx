@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-// We'll test the indexing logic extracted as a pure function
-import { buildToolIndex } from "../server.js";
+import { buildToolIndex } from "../../mcp/tools.js";
 
 const mockTools = [
   { name: "greet", description: "Say hello", inputSchema: {} },

@@ -120,7 +120,6 @@ Saves API roundtrips when an agent needs multiple tool calls.
         if (trimmed) lines.push(trimmed);
       }
 
-      // Process in chunks of `concurrency` (1 = sequential), preserve order
       const results: string[] = new Array(lines.length);
 
       for (let i = 0; i < lines.length; i += concurrency) {
@@ -130,13 +129,13 @@ Saves API roundtrips when an agent needs multiple tool calls.
           try {
             const req = JSON.parse(line) as { tool: string; params?: Record<string, unknown> };
             if (!req.tool) {
-              return { index, output: JSON.stringify({ ok: false, error: { code: 3, message: "Missing 'tool' field" } }) };
+              return { index, output: JSON.stringify(errorEnvelope(EXIT.VALIDATION_ERROR, "Missing 'tool' field")) };
             }
             const toolArgs = req.params ? ["--params", JSON.stringify(req.params)] : [];
             const envelope = await invokeTool(req.tool, toolArgs, opts);
             return { index, output: JSON.stringify(envelope) };
           } catch (err) {
-            return { index, output: JSON.stringify({ ok: false, error: { code: 5, message: (err as Error).message } }) };
+            return { index, output: JSON.stringify(errorEnvelope(EXIT.INTERNAL_ERROR, (err as Error).message)) };
           }
         });
 
@@ -146,7 +145,7 @@ Saves API roundtrips when an agent needs multiple tool calls.
           if (r.status === "fulfilled") {
             results[r.value.index] = r.value.output;
           } else {
-            results[i + j] = JSON.stringify({ ok: false, error: { code: 5, message: String(r.reason) } });
+            results[i + j] = JSON.stringify(errorEnvelope(EXIT.INTERNAL_ERROR, String(r.reason)));
           }
         }
       }

@@ -33,7 +33,6 @@ export interface ContentItem {
   mimeType?: string;
 }
 
-export type { ToolAnnotations } from "../mcp/types.js";
 import type { ToolAnnotations } from "../mcp/types.js";
 
 export interface ToolInfo {

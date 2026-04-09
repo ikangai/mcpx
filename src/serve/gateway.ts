@@ -71,8 +71,7 @@ export async function startGateway(opts?: { verbose?: boolean; port?: number; to
       const { alias, client, tools, config } = result.value;
       pool.set(alias, { client, tools, config });
     } else if (opts?.verbose) {
-      const alias = entries[i][0];
-      process.stderr.write(`Warning: Failed to connect to ${alias}: ${result.reason}\n`);
+      process.stderr.write(`Warning: Failed to connect to ${entries[i][0]}: ${result.reason}\n`);
     }
   }
 

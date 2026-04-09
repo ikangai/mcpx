@@ -8,15 +8,9 @@ import { DAEMON_PROTOCOL_VERSION, type DaemonRequest, type DaemonResponse } from
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { AnnotatedTool } from "../mcp/types.js";
 
-const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+import { buildToolIndex } from "../mcp/tools.js";
 
-export function buildToolIndex(tools: Tool[]): Map<string, Tool> {
-  const index = new Map<string, Tool>();
-  for (const tool of tools) {
-    index.set(tool.name, tool);
-  }
-  return index;
-}
+const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
 function getSocketPath(): string {
   const dir = process.env.MCPX_CONFIG_DIR ?? join(homedir(), ".config", "mcpx");
@@ -39,13 +33,13 @@ class ConnectionPool {
   async getOrConnect(alias: string, config?: ServerConfig): Promise<{ client: McpClient; tools: Tool[]; toolIndex: Map<string, Tool> }> {
     const existing = this.connections.get(alias);
     if (existing) {
-      // Check if connection is stale and needs health check
       if (Date.now() - existing.lastUsed > ConnectionPool.STALE_THRESHOLD) {
         try {
-          await existing.client.listTools();
+          const tools = await existing.client.listTools();
+          existing.tools = tools;
+          existing.toolIndex = buildToolIndex(tools);
           existing.lastUsed = Date.now();
         } catch {
-          // Connection is dead — remove and reconnect
           try { await existing.client.close(); } catch { /* ignore */ }
           this.connections.delete(alias);
           return this.getOrConnect(alias, config);
@@ -90,23 +84,20 @@ export class ResultCache {
     this.maxSize = maxSize;
   }
 
-  get(key: string): unknown | undefined {
+  get(key: string): unknown {
     const entry = this.cache.get(key);
     if (!entry) return undefined;
     if (Date.now() > entry.expiry) {
       this.cache.delete(key);
       return undefined;
     }
-    // LRU: move to end (most recent) by re-inserting
     this.cache.delete(key);
     this.cache.set(key, entry);
     return entry.result;
   }
 
   set(key: string, result: unknown, ttlMs: number): void {
-    // If key already exists, delete first (so re-insert goes to end)
     this.cache.delete(key);
-    // Evict oldest if at capacity
     if (this.cache.size >= this.maxSize) {
       const oldest = this.cache.keys().next().value!;
       this.cache.delete(oldest);

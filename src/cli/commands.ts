@@ -11,7 +11,7 @@ import { getServer, getAllServers } from "../config/store.js";
 import { logInvocation } from "../audit/logger.js";
 import { runHooks } from "../hooks/runner.js";
 import { DaemonClient } from "../daemon/client.js";
-import { buildToolIndex } from "../daemon/server.js";
+import { buildToolIndex } from "../mcp/tools.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { AnnotatedTool } from "../mcp/types.js";
 import {
