@@ -54,17 +54,23 @@ export async function startGateway(opts?: { verbose?: boolean; port?: number; to
   const servers = getAllServers();
   const pool = new Map<string, PoolEntry>();
 
-  // Connect to all registered servers and discover tools
-  for (const [alias, config] of Object.entries(servers)) {
-    try {
+  // Connect to all registered servers in parallel
+  const entries = Object.entries(servers);
+  const results = await Promise.allSettled(
+    entries.map(async ([alias, config]) => {
       const client = new McpClient();
       await client.connect(config, { verbose: opts?.verbose ?? false, timeout: 30_000 });
       const tools = await client.listTools();
+      return { alias, client, tools, config };
+    })
+  );
+
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      const { alias, client, tools, config } = result.value;
       pool.set(alias, { client, tools, config });
-    } catch (err) {
-      if (opts?.verbose) {
-        process.stderr.write(`Warning: Failed to connect to ${alias}: ${(err as Error).message}\n`);
-      }
+    } else if (opts?.verbose) {
+      process.stderr.write(`Warning: Failed to connect to server: ${result.reason}\n`);
     }
   }
 
