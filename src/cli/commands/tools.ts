@@ -120,68 +120,39 @@ Saves API roundtrips when an agent needs multiple tool calls.
         if (trimmed) lines.push(trimmed);
       }
 
-      if (concurrency <= 1) {
-        // Sequential (original behavior)
-        for (const line of lines) {
+      // Process in chunks of `concurrency` (1 = sequential), preserve order
+      const results: string[] = new Array(lines.length);
+
+      for (let i = 0; i < lines.length; i += concurrency) {
+        const chunk = lines.slice(i, i + concurrency);
+        const promises = chunk.map(async (line, j) => {
+          const index = i + j;
           try {
             const req = JSON.parse(line) as { tool: string; params?: Record<string, unknown> };
             if (!req.tool) {
-              console.log(JSON.stringify({ ok: false, error: { code: 3, message: "Missing 'tool' field" } }));
-              continue;
+              return { index, output: JSON.stringify({ ok: false, error: { code: 3, message: "Missing 'tool' field" } }) };
             }
             const toolArgs = req.params ? ["--params", JSON.stringify(req.params)] : [];
             const envelope = await invokeTool(req.tool, toolArgs, opts);
-            console.log(JSON.stringify(envelope));
+            return { index, output: JSON.stringify(envelope) };
           } catch (err) {
-            console.log(JSON.stringify({ ok: false, error: { code: 5, message: (err as Error).message } }));
-          }
-        }
-      } else {
-        // Parallel: process in chunks of `concurrency`, preserve order
-        const requests = lines.map((line, i) => {
-          try {
-            const req = JSON.parse(line) as { tool: string; params?: Record<string, unknown> };
-            return { index: i, req, error: undefined as string | undefined };
-          } catch (err) {
-            return { index: i, req: null, error: (err as Error).message };
+            return { index, output: JSON.stringify({ ok: false, error: { code: 5, message: (err as Error).message } }) };
           }
         });
 
-        const results: string[] = new Array(requests.length);
-
-        for (let i = 0; i < requests.length; i += concurrency) {
-          const chunk = requests.slice(i, i + concurrency);
-          const promises = chunk.map(async (entry) => {
-            if (!entry.req || entry.error) {
-              return { index: entry.index, output: JSON.stringify({ ok: false, error: { code: 5, message: entry.error ?? "Parse error" } }) };
-            }
-            if (!entry.req.tool) {
-              return { index: entry.index, output: JSON.stringify({ ok: false, error: { code: 3, message: "Missing 'tool' field" } }) };
-            }
-            try {
-              const toolArgs = entry.req.params ? ["--params", JSON.stringify(entry.req.params)] : [];
-              const envelope = await invokeTool(entry.req.tool, toolArgs, opts);
-              return { index: entry.index, output: JSON.stringify(envelope) };
-            } catch (err) {
-              return { index: entry.index, output: JSON.stringify({ ok: false, error: { code: 5, message: (err as Error).message } }) };
-            }
-          });
-
-          const chunkResults = await Promise.allSettled(promises);
-          for (let j = 0; j < chunkResults.length; j++) {
-            const r = chunkResults[j];
-            if (r.status === "fulfilled") {
-              results[r.value.index] = r.value.output;
-            } else {
-              results[chunk[j].index] = JSON.stringify({ ok: false, error: { code: 5, message: String(r.reason) } });
-            }
+        const chunkResults = await Promise.allSettled(promises);
+        for (let j = 0; j < chunkResults.length; j++) {
+          const r = chunkResults[j];
+          if (r.status === "fulfilled") {
+            results[r.value.index] = r.value.output;
+          } else {
+            results[i + j] = JSON.stringify({ ok: false, error: { code: 5, message: String(r.reason) } });
           }
         }
+      }
 
-        // Output in original order
-        for (const line of results) {
-          console.log(line);
-        }
+      for (const line of results) {
+        console.log(line);
       }
 
       process.exit(0);

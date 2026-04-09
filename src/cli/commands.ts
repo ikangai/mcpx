@@ -11,6 +11,7 @@ import { getServer, getAllServers } from "../config/store.js";
 import { logInvocation } from "../audit/logger.js";
 import { runHooks } from "../hooks/runner.js";
 import { DaemonClient } from "../daemon/client.js";
+import { buildToolIndex } from "../daemon/server.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { AnnotatedTool } from "../mcp/types.js";
 import {
@@ -155,8 +156,7 @@ export async function invokeTool(
 
   try {
     return await withServer(serverConfig, async (client, tools) => {
-      // Map lookup for consistency with daemon path (daemon stores persistent toolIndex)
-      const toolIndex = new Map(tools.map(t => [t.name, t]));
+      const toolIndex = buildToolIndex(tools);
       const tool = toolIndex.get(toolName);
       if (!tool) {
         const available = tools.map((t) => t.name).join(", ");
@@ -440,7 +440,7 @@ export async function getToolSchema(
 
   try {
     return await withServer(serverConfig, async (_client, tools) => {
-      const toolIndex = new Map(tools.map(t => [t.name, t]));
+      const toolIndex = buildToolIndex(tools);
       const tool = toolIndex.get(toolName);
       if (!tool) {
         const available = tools.map((t) => t.name).join(", ");

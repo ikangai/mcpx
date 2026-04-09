@@ -217,9 +217,9 @@ async function handleMessage(socket: Socket, rawMessage: string) {
       const tool = toolIndex.get(req.toolName!) as AnnotatedTool | undefined;
       const annotations = tool?.annotations;
       const cacheable = annotations?.readOnlyHint || annotations?.idempotentHint;
+      const cacheKey = cacheable ? `${req.serverAlias}:${req.toolName}:${JSON.stringify(req.toolArgs ?? {})}` : null;
 
-      if (cacheable) {
-        const cacheKey = `${req.serverAlias}:${req.toolName}:${JSON.stringify(req.toolArgs ?? {})}`;
+      if (cacheKey) {
         const cached = resultCache.get(cacheKey);
         if (cached) {
           respond({ id: req.id, result: cached });
@@ -230,9 +230,7 @@ async function handleMessage(socket: Socket, rawMessage: string) {
       try {
         const result = await client.callTool(req.toolName!, req.toolArgs ?? {});
 
-        // Cache if cacheable (30 second TTL)
-        if (cacheable) {
-          const cacheKey = `${req.serverAlias}:${req.toolName}:${JSON.stringify(req.toolArgs ?? {})}`;
+        if (cacheKey) {
           resultCache.set(cacheKey, result, 30_000);
         }
 
