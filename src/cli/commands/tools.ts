@@ -93,6 +93,7 @@ Examples:
   program
     .command("batch <server>")
     .description("Execute multiple tools from NDJSON stdin (one {tool,params} per line)")
+    .option("--parallel <n>", "Execute up to N tool calls concurrently (default: 1 = sequential)", "1")
     .addHelpText("after", `
 Reads NDJSON from stdin, each line: {"tool":"name","params":{...}}
 Outputs one JSON result per line (NDJSON).
@@ -101,29 +102,80 @@ Example:
   echo '{"tool":"echo","params":{"message":"hello"}}
 {"tool":"get-sum","params":{"a":1,"b":2}}' | mcpx batch /everything
 
+  # Run 4 calls concurrently:
+  cat requests.ndjson | mcpx batch /server --parallel 4
+
 Saves API roundtrips when an agent needs multiple tool calls.
 `)
-    .action(async (server: string) => {
+    .action(async (server: string, cmdOpts: { parallel?: string }) => {
       const alias = server.startsWith("/") ? server.slice(1) : server;
       const opts = { ...getOpts(), serverAlias: alias };
+      const concurrency = Math.max(1, parseInt(cmdOpts.parallel ?? "1", 10));
 
       const rl = createInterface({ input: process.stdin, terminal: false });
+      const lines: string[] = [];
 
       for await (const line of rl) {
         const trimmed = line.trim();
-        if (!trimmed) continue;
+        if (trimmed) lines.push(trimmed);
+      }
 
-        try {
-          const req = JSON.parse(trimmed) as { tool: string; params?: Record<string, unknown> };
-          if (!req.tool) {
-            console.log(JSON.stringify({ ok: false, error: { code: 3, message: "Missing 'tool' field" } }));
-            continue;
+      if (concurrency <= 1) {
+        // Sequential (original behavior)
+        for (const line of lines) {
+          try {
+            const req = JSON.parse(line) as { tool: string; params?: Record<string, unknown> };
+            if (!req.tool) {
+              console.log(JSON.stringify({ ok: false, error: { code: 3, message: "Missing 'tool' field" } }));
+              continue;
+            }
+            const toolArgs = req.params ? ["--params", JSON.stringify(req.params)] : [];
+            const envelope = await invokeTool(req.tool, toolArgs, opts);
+            console.log(JSON.stringify(envelope));
+          } catch (err) {
+            console.log(JSON.stringify({ ok: false, error: { code: 5, message: (err as Error).message } }));
           }
-          const toolArgs = req.params ? ["--params", JSON.stringify(req.params)] : [];
-          const envelope = await invokeTool(req.tool, toolArgs, opts);
-          console.log(JSON.stringify(envelope));
-        } catch (err) {
-          console.log(JSON.stringify({ ok: false, error: { code: 5, message: (err as Error).message } }));
+        }
+      } else {
+        // Parallel: process in chunks of `concurrency`, preserve order
+        const requests = lines.map((line, i) => {
+          try {
+            const req = JSON.parse(line) as { tool: string; params?: Record<string, unknown> };
+            return { index: i, req, error: undefined as string | undefined };
+          } catch (err) {
+            return { index: i, req: null, error: (err as Error).message };
+          }
+        });
+
+        const results: string[] = new Array(requests.length);
+
+        for (let i = 0; i < requests.length; i += concurrency) {
+          const chunk = requests.slice(i, i + concurrency);
+          const promises = chunk.map(async (entry) => {
+            if (!entry.req || entry.error) {
+              return { index: entry.index, output: JSON.stringify({ ok: false, error: { code: 5, message: entry.error ?? "Parse error" } }) };
+            }
+            if (!entry.req.tool) {
+              return { index: entry.index, output: JSON.stringify({ ok: false, error: { code: 3, message: "Missing 'tool' field" } }) };
+            }
+            try {
+              const toolArgs = entry.req.params ? ["--params", JSON.stringify(entry.req.params)] : [];
+              const envelope = await invokeTool(entry.req.tool, toolArgs, opts);
+              return { index: entry.index, output: JSON.stringify(envelope) };
+            } catch (err) {
+              return { index: entry.index, output: JSON.stringify({ ok: false, error: { code: 5, message: (err as Error).message } }) };
+            }
+          });
+
+          const chunkResults = await Promise.all(promises);
+          for (const r of chunkResults) {
+            results[r.index] = r.output;
+          }
+        }
+
+        // Output in original order
+        for (const line of results) {
+          console.log(line);
         }
       }
 
