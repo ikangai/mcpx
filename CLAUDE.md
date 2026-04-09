@@ -38,21 +38,27 @@ Key flow for slash commands: `mcpx /server tool --flag value` -> router extracts
 ### Module responsibilities
 
 - `src/index.ts` — CLI entry point; loads `.env`, wires all commander subcommands, handles slash-command and `-p` shorthand routing, `emitOutput` for `--format` flag
-- `src/cli/commands.ts` — `invokeTool`, `listTools`, `runAdd`, `runRemove`, `runUpdate`, `runServers`, `runImport`, `runSkills`, `getToolSchema`; orchestrates server resolution, daemon-or-direct connection via `withServer`, and envelope construction
+- `src/cli/commands.ts` — `invokeTool`, `listTools`, `getToolSchema`; orchestrates server resolution, daemon-or-direct connection via `withServer`, and envelope construction. `--field` auto-implies `--raw` when piped (not a TTY). Timeout errors return exit code 124
+- `src/cli/commands/tools.ts` — `batch` (with `--parallel N` for concurrent execution), `watch`, `exec`, `list`, `schema` subcommands
+- `src/cli/commands/manage.ts` — `add`, `remove`, `update`, `import` subcommands
+- `src/cli/commands/servers.ts` — `servers` subcommand
+- `src/cli/commands/observe.ts` — `inspect`, `test`, `diff`, `hook`, `alias`, `run` subcommands
 - `src/cli/router.ts` — `parseSlashCommand` and `parsePShorthand`: extract `/server tool args` patterns from argv
 - `src/cli/flags.ts` — converts JSON Schema properties into commander `Option` instances; `parseToolArgs` reassembles flags back into a tool arguments object. `--json` escape hatch for complex nested inputs
 - `src/mcp/client.ts` — `McpClient` wraps the SDK: connect (with timeout), listTools (paginated), callTool, close
 - `src/mcp/config.ts` — `ServerConfig` type, `parseServerSpec` (inline `-s` commands), `parseConfigFile` (Claude Desktop format)
+- `src/mcp/types.ts` — `ToolAnnotations` and `AnnotatedTool` interfaces (typed annotations, replacing `as any` casts)
+- `src/mcp/tools.ts` — `buildToolIndex`: pure utility that builds a `Map<string, Tool>` from a tool array (used by daemon and CLI)
 - `src/config/store.ts` — `loadServers`, `saveServers`, `addServer`, `updateServer`, `removeServer`, `getServer`, `getAllServers`, `importServers`; persists to `~/.config/mcpx/servers.json` (overridable via `MCPX_CONFIG_DIR`)
-- `src/daemon/server.ts` — background daemon process; `ConnectionPool` caches MCP client connections; listens on Unix socket / Windows named pipe; auto-shuts down after 5 min idle
+- `src/daemon/server.ts` — background daemon process; `ConnectionPool` caches MCP client connections with `toolIndex` and `lastUsed` health tracking (stale >60s triggers health check); `ResultCache` with LRU eviction (max 1000 entries); listens on Unix socket / Windows named pipe; auto-shuts down after 5 min idle. **Warning**: has module-level side effects (starts daemon server) — do not import from this file for utility functions; use `src/mcp/tools.ts` instead
 - `src/daemon/client.ts` — `DaemonClient` connects to the daemon socket, auto-starts daemon if not running; methods: `listTools`, `callTool`, `ping`, `shutdown`
 - `src/daemon/protocol.ts` — `DaemonRequest` / `DaemonResponse` message types (JSON-RPC-like over newline-delimited JSON)
-- `src/output/envelope.ts` — `Envelope` type (`SuccessEnvelope | ErrorEnvelope`), factory functions (`successResult`, `successTools`, `successSchema`, `successServers`, `successEmpty`, `errorEnvelope`), `output()` writes JSON to stdout and exits
+- `src/output/envelope.ts` — `Envelope` type (`SuccessEnvelope | ErrorEnvelope`), factory functions (`successResult`, `successTools`, `successSchema`, `successServers`, `successEmpty`, `errorEnvelope`), `EXIT` codes (0-5 + 124 for timeout), `output()` writes JSON to stdout and exits
 - `src/output/formatter.ts` — `formatResult` and `formatToolList` with auto-detect TTY; supports json/table/yaml formats using cli-table3 and chalk
 - `src/interactive/repl.ts` — REPL mode with inquirer search prompt, per-field input prompts, and command-line echo of equivalent `mcpx exec` command
 - `src/skills/generator.ts` — `generateSkill` produces markdown documentation for a server's tools with usage examples and parameter tables
 - `src/utils/schema.ts` — `JsonSchema`/`PropertySchema` types, `isSimpleType`, `isArrayOfPrimitives` type guards
-- `src/serve/gateway.ts` — MCP gateway server; connects to all registered servers and re-exposes their tools with namespaced names (`alias.toolName`) via stdio or HTTP transport
+- `src/serve/gateway.ts` — MCP gateway server; connects to all registered servers in parallel (`Promise.allSettled`) and re-exposes their tools via stdio or HTTP transport
 - `src/workflows/runner.ts` — YAML workflow runner; sequential multi-server tool chains with variable interpolation
 - `src/hooks/runner.ts` — middleware hooks; runs shell commands before/after tool calls with pattern matching
 - `src/audit/logger.ts` — NDJSON audit logger; appends tool invocations with timing to a log file
@@ -78,5 +84,10 @@ Key flow for slash commands: `mcpx /server tool --flag value` -> router extracts
 - **Hooks**: before/after patterns (`before:server.*`, `after:server.tool`) with 5s timeout, silent failures — hooks never block tool execution
 - **Workflows**: YAML-based sequential steps with `{{variable}}` interpolation between steps — fails fast on first error
 - **HTTP gateway**: `mcpx serve --port N` exposes JSON-RPC endpoint at `/mcp` and health check at `/health` — no authentication by default (bind to localhost for security)
-- **Result caching**: daemon caches results for tools with `readOnlyHint` or `idempotentHint` annotations (30s TTL)
+- **Result caching**: daemon caches results for tools with `readOnlyHint` or `idempotentHint` annotations (30s TTL, LRU eviction at 1000 entries)
 - **Output formats**: `--format csv|markdown` in addition to json/table/yaml — CSV escapes fields with commas/quotes, markdown produces GFM tables
+- **Timeout exit code 124**: follows GNU `timeout` convention so agents can distinguish slow servers from down servers
+- **Pipe-friendly `--field`**: `--field` auto-implies `--raw` when stdout is not a TTY, outputting just the extracted value
+- **Parallel batch**: `mcpx batch /server --parallel N` processes NDJSON lines in chunks of N via `Promise.allSettled`, preserving output order
+- **Connection health checks**: daemon pool health-checks connections idle >60s via `listTools()`, updating cached tools/toolIndex on success, reconnecting on failure
+- **Side-effect isolation**: `daemon/server.ts` has module-level side effects (daemon startup). Pure utilities like `buildToolIndex` live in `mcp/tools.ts` to avoid accidental daemon initialization on import
