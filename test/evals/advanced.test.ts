@@ -46,13 +46,14 @@ describe("advanced features", () => {
   }, 30_000);
 
   // --- --field ---
-  it("--field extracts a specific field from JSON result", async () => {
+  it("--field extracts a specific field from JSON result (raw in pipe mode)", async () => {
     const result = await runMcpx(
       ["/test", "search", "--params", '{"query":"test"}', "--field", "query"],
       { configDir }
     );
-    expectSuccess(result);
-    expect(result.json!.result![0].text).toBe("test");
+    // --field auto-implies --raw when piped (child process = not TTY)
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe("test");
   }, 30_000);
 
   // --- --format csv ---

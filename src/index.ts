@@ -78,8 +78,11 @@ function getOpts(): import("./cli/commands.js").ServerOpts {
  * When --format is json or omitted, emit the raw JSON envelope (agent-facing).
  */
 function emitOutput(envelope: Envelope, formatOverride?: string): never {
-  // --raw: strip envelope, output just content (saves tokens for agents)
-  const isRaw = formatOverride === "raw" || program.opts().raw;
+  // --field auto-implies --raw when output is piped (not a TTY)
+  const fieldExtracted = (envelope as any)._fieldExtracted;
+  if (fieldExtracted) delete (envelope as any)._fieldExtracted;
+
+  const isRaw = formatOverride === "raw" || program.opts().raw || (fieldExtracted && !process.stdout.isTTY);
   if (isRaw) {
     return output(envelope, true);
   }
