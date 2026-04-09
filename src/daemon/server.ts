@@ -9,6 +9,14 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 const IDLE_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
+export function buildToolIndex(tools: Tool[]): Map<string, Tool> {
+  const index = new Map<string, Tool>();
+  for (const tool of tools) {
+    index.set(tool.name, tool);
+  }
+  return index;
+}
+
 function getSocketPath(): string {
   const dir = process.env.MCPX_CONFIG_DIR ?? join(homedir(), ".config", "mcpx");
   if (process.platform === "win32") {
@@ -19,13 +27,13 @@ function getSocketPath(): string {
 }
 
 class ConnectionPool {
-  private connections = new Map<string, { client: McpClient; tools: Tool[] }>();
+  private connections = new Map<string, { client: McpClient; tools: Tool[]; toolIndex: Map<string, Tool> }>();
 
   has(alias: string): boolean {
     return this.connections.has(alias);
   }
 
-  async getOrConnect(alias: string, config?: ServerConfig): Promise<{ client: McpClient; tools: Tool[] }> {
+  async getOrConnect(alias: string, config?: ServerConfig): Promise<{ client: McpClient; tools: Tool[]; toolIndex: Map<string, Tool> }> {
     const existing = this.connections.get(alias);
     if (existing) return existing;
 
@@ -34,7 +42,8 @@ class ConnectionPool {
     const client = new McpClient();
     await client.connect(config, { verbose: false });
     const tools = await client.listTools();
-    const entry = { client, tools };
+    const toolIndex = buildToolIndex(tools);
+    const entry = { client, tools, toolIndex };
     this.connections.set(alias, entry);
     return entry;
   }
@@ -157,7 +166,7 @@ async function handleMessage(socket: Socket, rawMessage: string) {
       return;
     }
 
-    const { client, tools } = await pool.getOrConnect(req.serverAlias, req.serverConfig);
+    const { client, tools, toolIndex } = await pool.getOrConnect(req.serverAlias, req.serverConfig);
 
     if (req.method === "listTools") {
       try {
@@ -172,7 +181,7 @@ async function handleMessage(socket: Socket, rawMessage: string) {
 
     if (req.method === "callTool") {
       // Check cache for idempotent/read-only tools
-      const tool = tools.find((t: any) => t.name === req.toolName);
+      const tool = toolIndex.get(req.toolName!);
       const annotations = (tool as any)?.annotations;
       const cacheable = annotations?.readOnlyHint || annotations?.idempotentHint;
 

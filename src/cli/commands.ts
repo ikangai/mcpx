@@ -154,7 +154,8 @@ export async function invokeTool(
 
   try {
     return await withServer(serverConfig, async (client, tools) => {
-      const tool = tools.find((t) => t.name === toolName);
+      const toolIndex = new Map(tools.map(t => [t.name, t]));
+      const tool = toolIndex.get(toolName);
       if (!tool) {
         const available = tools.map((t) => t.name).join(", ");
         return errorEnvelope(
@@ -438,7 +439,8 @@ export async function getToolSchema(
 
   try {
     return await withServer(serverConfig, async (_client, tools) => {
-      const tool = tools.find((t) => t.name === toolName);
+      const toolIndex = new Map(tools.map(t => [t.name, t]));
+      const tool = toolIndex.get(toolName);
       if (!tool) {
         const available = tools.map((t) => t.name).join(", ");
         return errorEnvelope(
