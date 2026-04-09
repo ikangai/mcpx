@@ -10,12 +10,28 @@ All notable changes to this project will be documented in this file.
 - **Authentication** -- static Bearer tokens via `-H` header flag, custom headers, and OAuth client_credentials flow via `--oauth-*` flags
 - **Transport selection** -- auto-detects HTTP vs stdio from URL; explicit `--transport sse|http|stdio` override available
 - **Friendly HTTP errors** -- 401/403/network failures produce actionable messages instead of raw errors
+- **Parallel batch execution** -- `mcpx batch /server --parallel N` executes up to N tool calls concurrently from NDJSON stdin, preserving output order
+- **Pipe-friendly `--field`** -- `--field` auto-implies `--raw` when stdout is not a TTY, so piped output is just the extracted value (no envelope)
+- **Timeout exit code 124** -- timeouts now return exit code 124 (GNU `timeout` convention) instead of generic connection error (2), letting agents distinguish slow servers from down servers
+- **Connection health checks** -- daemon health-checks stale connections (idle >60s) before reuse and auto-reconnects dead ones
+
+### Performance
+
+- **O(1) tool lookup** -- daemon ConnectionPool stores a `Map<string, Tool>` index alongside tool arrays; `callTool` uses O(1) Map lookup instead of linear scan
+- **LRU cache eviction** -- daemon ResultCache now has a max entry limit (1000) with least-recently-used eviction, preventing unbounded memory growth
+- **Parallel gateway startup** -- `mcpx serve` connects to all registered servers concurrently via `Promise.allSettled` instead of sequentially
+
+### Code Quality
+
+- **Type-safe tool annotations** -- new `ToolAnnotations` and `AnnotatedTool` types in `src/mcp/types.ts` replace all `(tool as any).annotations` casts across 5 files
+- Excluded `__tests__` from TypeScript build output via `tsconfig.json`
 
 ### Documentation
 
 - Added Authentication section to README with examples for Bearer tokens, custom headers, OAuth, and SSE transport
 - Added comprehensive MCP vs mcpx evaluation guide (`docs/mcp-vs-mcpx-eval.md`) with latency benchmarks, token-budget estimates, and reproducible manual eval
 - Improved eval doc portability: replaced hardcoded paths with `$REPO` / `<REPO>` placeholders, added quick-start one-liner, condensed sandbox caveats, flagged token estimates as order-of-magnitude
+- Updated README with batch `--parallel`, exit code 124, daemon health checks, and pipe-friendly `--field`
 
 ## [0.1.0] - 2026-04-08
 

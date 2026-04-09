@@ -51,6 +51,7 @@ mcpx /weather get-forecast --city Berlin
 | `mcpx resource /server <uri>` | Read a resource |
 | `mcpx diff /server` | Compare tool schemas against snapshot |
 | `mcpx test /server` | Verify server health |
+| `mcpx batch /server [--parallel N]` | Bulk tool calls from NDJSON stdin |
 | `mcpx watch <interval> /server <tool>` | Periodic re-execution |
 | `mcpx workflow <file>` | Run multi-step YAML workflow |
 | `mcpx hook add\|list\|remove` | Manage middleware hooks |
@@ -75,8 +76,12 @@ mcpx -s "npx @mcp/server" exec tool --key value
 # Pipe output between tools
 mcpx /pg execute_sql --params '{"sql":"SELECT id FROM users"}' | mcpx /pg get_column_cardinality --params-stdin
 
-# Extract a specific field
+# Extract a specific field (auto-raw when piped)
 mcpx /pg database_overview --field uptime
+
+# Parallel batch execution (agents fire N calls at once)
+echo '{"tool":"get-forecast","params":{"city":"Berlin"}}
+{"tool":"get-forecast","params":{"city":"London"}}' | mcpx batch /weather --parallel 4
 ```
 
 ## Output Formats
@@ -114,6 +119,7 @@ Success envelopes contain one of: `result` (tool output), `tools` (listing), `sc
 | 3 | Validation error |
 | 4 | Config error |
 | 5 | Internal error |
+| 124 | Timeout (GNU convention) |
 
 ## Server Registration
 
@@ -178,7 +184,7 @@ mcpx daemon status   # Check if running
 mcpx daemon stop     # Stop daemon
 ```
 
-The daemon auto-exits after 5 minutes of inactivity.
+The daemon auto-exits after 5 minutes of inactivity. Stale connections (idle >60s) are health-checked before reuse and automatically reconnected if dead.
 
 ## MCP Protocol Features
 
