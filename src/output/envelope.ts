@@ -47,6 +47,7 @@ export const EXIT = {
   VALIDATION_ERROR: 3,
   CONFIG_ERROR: 4,
   INTERNAL_ERROR: 5,
+  TIMEOUT: 124,
 } as const;
 
 export function successResult(content: ContentItem[]): SuccessEnvelope {

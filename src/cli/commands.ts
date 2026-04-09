@@ -361,7 +361,10 @@ export async function invokeTool(
       return successResult(result.content);
     }, { verbose: opts?.verbose, timeout: opts?.timeout, serverAlias: opts?.serverAlias });
   } catch (err) {
-    return errorEnvelope(EXIT.CONNECTION_ERROR, friendlyError(err as Error, serverConfig));
+    const msg = (err as Error).message;
+    const isTimeout = msg.includes("timed out") || msg.includes("timeout") || msg.includes("ETIMEDOUT");
+    const code = isTimeout ? EXIT.TIMEOUT : EXIT.CONNECTION_ERROR;
+    return errorEnvelope(code, friendlyError(err as Error, serverConfig));
   }
 }
 
