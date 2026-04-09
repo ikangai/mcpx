@@ -64,8 +64,13 @@ class ConnectionPool {
   }
 }
 
-class ResultCache {
+export class ResultCache {
   private cache = new Map<string, { result: unknown; expiry: number }>();
+  private maxSize: number;
+
+  constructor(maxSize = 1000) {
+    this.maxSize = maxSize;
+  }
 
   get(key: string): unknown | undefined {
     const entry = this.cache.get(key);
@@ -74,10 +79,20 @@ class ResultCache {
       this.cache.delete(key);
       return undefined;
     }
+    // LRU: move to end (most recent) by re-inserting
+    this.cache.delete(key);
+    this.cache.set(key, entry);
     return entry.result;
   }
 
   set(key: string, result: unknown, ttlMs: number): void {
+    // If key already exists, delete first (so re-insert goes to end)
+    this.cache.delete(key);
+    // Evict oldest if at capacity
+    if (this.cache.size >= this.maxSize) {
+      const oldest = this.cache.keys().next().value!;
+      this.cache.delete(oldest);
+    }
     this.cache.set(key, { result, expiry: Date.now() + ttlMs });
   }
 
@@ -87,7 +102,7 @@ class ResultCache {
 }
 
 const pool = new ConnectionPool();
-const resultCache = new ResultCache();
+const resultCache = new ResultCache(1000);
 let idleTimer: ReturnType<typeof setTimeout>;
 let server: Server;
 
