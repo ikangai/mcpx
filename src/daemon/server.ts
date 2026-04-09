@@ -28,7 +28,9 @@ function getSocketPath(): string {
 }
 
 class ConnectionPool {
-  private connections = new Map<string, { client: McpClient; tools: Tool[]; toolIndex: Map<string, Tool> }>();
+  private connections = new Map<string, { client: McpClient; tools: Tool[]; toolIndex: Map<string, Tool>; lastUsed: number }>();
+
+  private static STALE_THRESHOLD = 60_000; // 60 seconds
 
   has(alias: string): boolean {
     return this.connections.has(alias);
@@ -36,7 +38,22 @@ class ConnectionPool {
 
   async getOrConnect(alias: string, config?: ServerConfig): Promise<{ client: McpClient; tools: Tool[]; toolIndex: Map<string, Tool> }> {
     const existing = this.connections.get(alias);
-    if (existing) return existing;
+    if (existing) {
+      // Check if connection is stale and needs health check
+      if (Date.now() - existing.lastUsed > ConnectionPool.STALE_THRESHOLD) {
+        try {
+          await existing.client.listTools();
+          existing.lastUsed = Date.now();
+        } catch {
+          // Connection is dead — remove and reconnect
+          try { await existing.client.close(); } catch { /* ignore */ }
+          this.connections.delete(alias);
+          return this.getOrConnect(alias, config);
+        }
+      }
+      existing.lastUsed = Date.now();
+      return existing;
+    }
 
     if (!config) throw new Error(`No config for alias "${alias}"`);
 
@@ -44,7 +61,7 @@ class ConnectionPool {
     await client.connect(config, { verbose: false });
     const tools = await client.listTools();
     const toolIndex = buildToolIndex(tools);
-    const entry = { client, tools, toolIndex };
+    const entry = { client, tools, toolIndex, lastUsed: Date.now() };
     this.connections.set(alias, entry);
     return entry;
   }

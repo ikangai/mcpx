@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 describe("gateway parallel connections", () => {
   it("connects to multiple servers concurrently", async () => {
     // Verify that Promise.allSettled is used instead of sequential for...of
-    const fs = await import("node:fs");
-    const source = fs.readFileSync(
-      new URL("../gateway.ts", import.meta.url).pathname,
+    const source = readFileSync(
+      resolve(__dirname, "../gateway.ts"),
       "utf-8"
     );
     expect(source).toContain("Promise.allSettled");
