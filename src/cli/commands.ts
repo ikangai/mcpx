@@ -349,8 +349,7 @@ export async function invokeTool(
           return c;
         });
         const env = successResult(extracted);
-        // Tag for auto-raw in pipe mode
-        (env as any)._fieldExtracted = true;
+        env._fieldExtracted = true;
         return env;
       }
 

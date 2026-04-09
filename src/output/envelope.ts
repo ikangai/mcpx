@@ -15,6 +15,8 @@ export interface SuccessEnvelope {
   tools?: ToolInfo[];
   schema?: Record<string, unknown>;
   servers?: ServerInfo[];
+  /** @internal Used by --field to signal auto-raw in pipe mode */
+  _fieldExtracted?: boolean;
 }
 
 export interface ErrorEnvelope {

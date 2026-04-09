@@ -79,8 +79,8 @@ function getOpts(): import("./cli/commands.js").ServerOpts {
  */
 function emitOutput(envelope: Envelope, formatOverride?: string): never {
   // --field auto-implies --raw when output is piped (not a TTY)
-  const fieldExtracted = (envelope as any)._fieldExtracted;
-  if (fieldExtracted) delete (envelope as any)._fieldExtracted;
+  const fieldExtracted = envelope.ok && envelope._fieldExtracted;
+  if (fieldExtracted) delete envelope._fieldExtracted;
 
   const isRaw = formatOverride === "raw" || program.opts().raw || (fieldExtracted && !process.stdout.isTTY);
   if (isRaw) {
